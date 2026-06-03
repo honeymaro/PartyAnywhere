@@ -20,16 +20,16 @@ vec2 hash2(float n) { return vec2(hash(n), hash(n + 17.31)); }
 // Segment distance field: returns (dist, t along segment)
 vec2 segSDF(vec2 p, vec2 a, vec2 b) {
   vec2 ab = b - a;
-  float t = clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0);
+  float t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
   return vec2(length(p - (a + t * ab)), t);
 }
 
 void main() {
   vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution) / min(uResolution.x, uResolution.y);
 
-  float speed = 0.18 + uMid * 0.45;
-  float bassGlow = 0.5 + uBass * 1.2;
-  float beatPulse = uBeat * 2.5;
+  float speed = 0.18 + uMid * 0.15;
+  float bassGlow = 0.5 + uBass * 0.6;
+  float beatPulse = uBeat * 1.2;
 
   // Build 12 drifting nodes
   const int N = 12;
@@ -86,7 +86,7 @@ void main() {
     float d = length(uv - nodes[i]);
     float twinkle = 0.75 + 0.25 * sin(uTime * (2.1 + hash(fi) * 3.0) + fi * 4.7);
     float nodeGlow = (0.004 + uTreble * 0.003) * twinkle / (d * d + 0.0003);
-    float core = exp(-d * 120.0) * (1.0 + beatPulse * 0.8) * twinkle;
+    float core = exp(-d * 120.0) * (1.0 + beatPulse * 0.5) * twinkle;
     col += uAccent * clamp(nodeGlow, 0.0, 2.5);
     col += uAccent * core;
   }
