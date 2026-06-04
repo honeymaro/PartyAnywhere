@@ -10,7 +10,7 @@ import { registerAll } from './visualizers/index';
 import { RotationController } from './rotation-controller';
 import { loadSettings, saveSettings } from './settings-store';
 import type { Settings } from './settings-store';
-import type { AudioFrame } from './core/types';
+import type { AudioFrame, Palette } from './core/types';
 import type { VisualizerInfo } from './gl/registry';
 
 const SILENT_FRAME: AudioFrame = {
@@ -43,6 +43,9 @@ export class App {
   private started = false;
   private starting = false;
   private manualColorHex = '#4f7cff';
+  private imageOverlayEnabled = false;
+  private overlayEffects: string[] = ['pulse'];
+  private onFrameCb: ((audio: AudioFrame, dt: number, palette: Palette) => void) | null = null;
   private resizeHandler = (): void => this.handleResize();
 
   constructor(canvas: HTMLCanvasElement) {
@@ -81,6 +84,9 @@ export class App {
       }
     }
 
+    this.imageOverlayEnabled = saved.imageOverlay ?? false;
+    this.overlayEffects = saved.overlayEffects ?? ['pulse'];
+
     this.colorService = new ColorService(DEFAULT_PALETTE, saved.colorSource ?? 'screen');
     this.colorService.addSource(this.manualSource);
     this.colorService.addSource(this.imageSource);
@@ -93,6 +99,8 @@ export class App {
       manualColor: this.manualColorHex,
       rotationIntervalSec: this.rotation.getIntervalSec(),
       rotationPaused: this.rotation.isPaused(),
+      imageOverlay: this.imageOverlayEnabled,
+      overlayEffects: this.overlayEffects,
     };
     saveSettings(settings);
   }
@@ -157,7 +165,8 @@ export class App {
   }
 
   async enterFullscreen(): Promise<void> {
-    await this.canvas.requestFullscreen();
+    // Fullscreen the #stage wrapper (canvas + image overlay), not just the canvas.
+    await (this.canvas.parentElement ?? this.canvas).requestFullscreen();
   }
 
   // used by the Plan 3 gallery
@@ -223,6 +232,29 @@ export class App {
     return this.rotation.getIntervalSec();
   }
 
+  isImageOverlayEnabled(): boolean {
+    return this.imageOverlayEnabled;
+  }
+
+  setImageOverlayEnabled(enabled: boolean): void {
+    this.imageOverlayEnabled = enabled;
+    this.persist();
+  }
+
+  getOverlayEffects(): string[] {
+    return [...this.overlayEffects];
+  }
+
+  setOverlayEffects(ids: string[]): void {
+    this.overlayEffects = ids;
+    this.persist();
+  }
+
+  /** Register a per-frame callback (audio + dt + current palette). Fires only while running. */
+  onFrame(cb: (audio: AudioFrame, dt: number, palette: Palette) => void): void {
+    this.onFrameCb = cb;
+  }
+
   setColorSource(id: ColorSourceId): void {
     this.colorService.setActive(id);
     this.persist();
@@ -283,6 +315,7 @@ export class App {
         audio,
         palette,
       });
+      this.onFrameCb?.(audio, dt, palette);
       this.rafId = requestAnimationFrame(loop);
     };
     this.rafId = requestAnimationFrame(loop);

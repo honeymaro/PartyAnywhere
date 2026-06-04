@@ -36,4 +36,25 @@ describe('parseSettings', () => {
     expect(parseSettings({ rotationIntervalSec: 3 })).toEqual({ rotationIntervalSec: 3 });
     expect(parseSettings({ manualColor: '4f7cff' })).toEqual({ manualColor: '4f7cff' }); // hash optional
   });
+
+  it('keeps the image-overlay fields', () => {
+    expect(parseSettings({ imageOverlay: true, overlayEffects: ['pulse', 'spin'] })).toEqual({
+      imageOverlay: true,
+      overlayEffects: ['pulse', 'spin'],
+    });
+  });
+
+  it('migrates the legacy single overlayEffect string to an array', () => {
+    expect(parseSettings({ overlayEffect: 'glow' })).toEqual({ overlayEffects: ['glow'] });
+  });
+
+  it('prefers overlayEffects over the legacy field when both are present', () => {
+    expect(parseSettings({ overlayEffects: ['bob'], overlayEffect: 'glow' })).toEqual({
+      overlayEffects: ['bob'],
+    });
+  });
+
+  it('drops malformed image-overlay fields', () => {
+    expect(parseSettings({ imageOverlay: 'yes', overlayEffects: [1, 2] })).toEqual({});
+  });
 });

@@ -3,10 +3,14 @@ import { App } from './app';
 import type { ColorSourceId } from './color/color-service';
 import { VISUALIZERS } from './visualizers/index';
 import { PreviewGallery } from './ui/preview-gallery';
+import { ImageOverlay } from './ui/image-overlay';
+import { OVERLAY_EFFECTS } from './ui/overlay-effects';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
 root.innerHTML = `
-  <canvas id="stage"></canvas>
+  <div id="stage">
+    <canvas id="view"></canvas>
+  </div>
   <div id="controls">
     <button id="start" type="button">Start screen share</button>
     <button id="fullscreen" type="button" disabled>Fullscreen</button>
@@ -16,7 +20,9 @@ root.innerHTML = `
     <button id="src-image" type="button" class="src">Image</button>
     <button id="src-manual" type="button" class="src">Manual</button>
     <input id="color-pick" type="color" value="#4f7cff" class="control-hidden" />
-    <label id="image-label" class="file-btn control-hidden">Upload image<input id="image-file" type="file" accept="image/*" hidden /></label>
+    <label id="image-label" class="file-btn">Upload image<input id="image-file" type="file" accept="image/*" hidden /></label>
+    <button id="overlay-toggle" type="button">Image overlay</button>
+    <span id="overlay-effects" class="overlay-effects control-hidden"></span>
     <span class="divider"></span>
     <button id="rot-prev" type="button">◀</button>
     <button id="rot-pause" type="button">⏸ Pause</button>
@@ -40,17 +46,21 @@ root.innerHTML = `
   </div>
 `;
 
-const canvas = document.querySelector<HTMLCanvasElement>('#stage')!;
+const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
+const stage = document.querySelector<HTMLDivElement>('#stage')!;
 const status = document.querySelector<HTMLSpanElement>('#status')!;
 const startBtn = document.querySelector<HTMLButtonElement>('#start')!;
 const fsBtn = document.querySelector<HTMLButtonElement>('#fullscreen')!;
 
 const app = new App(canvas);
+const overlay = new ImageOverlay(stage);
+app.onFrame((audio, dt, palette) => overlay.update(audio, dt, palette));
 
 app.onStopped(() => {
   status.classList.remove('warn');
   status.textContent = 'Idle';
   fsBtn.disabled = true;
+  overlay.reset();
 });
 
 startBtn.addEventListener('click', async () => {
@@ -86,15 +96,14 @@ const srcButtons: Record<ColorSourceId, HTMLButtonElement> = {
 };
 
 const colorPick = document.querySelector<HTMLInputElement>('#color-pick')!;
-const imageLabel = document.querySelector<HTMLLabelElement>('#image-label')!;
 
 function highlightSource(id: ColorSourceId): void {
   for (const key of Object.keys(srcButtons) as ColorSourceId[]) {
     srcButtons[key].classList.toggle('active', key === id);
   }
-  // Reveal only the control relevant to the active source.
+  // Reveal the manual color picker only when Manual is active. The image upload stays
+  // always visible — the uploaded image now also feeds the image overlay, not just color.
   colorPick.classList.toggle('control-hidden', id !== 'manual');
-  imageLabel.classList.toggle('control-hidden', id !== 'image');
 }
 
 (Object.keys(srcButtons) as ColorSourceId[]).forEach((id) => {
@@ -117,6 +126,7 @@ const imageFile = document.querySelector<HTMLInputElement>('#image-file')!;
 imageFile.addEventListener('change', async () => {
   const file = imageFile.files?.[0];
   if (!file) return;
+  overlay.setImageFile(file);
   try {
     await app.setImageFromFile(file);
     highlightSource('image');
@@ -189,4 +199,54 @@ function setAllSelected(checked: boolean): void {
 galleryAll.addEventListener('click', () => setAllSelected(true));
 galleryNone.addEventListener('click', () => setAllSelected(false));
 
-window.addEventListener('beforeunload', () => gallery?.dispose());
+const overlayToggle = document.querySelector<HTMLButtonElement>('#overlay-toggle')!;
+const overlayEffectsEl = document.querySelector<HTMLSpanElement>('#overlay-effects')!;
+
+// One checkbox per effect — multiple can be active at once (e.g. Spin + Pulse).
+const effectChecks: Record<string, HTMLInputElement> = {};
+for (const e of OVERLAY_EFFECTS) {
+  const label = document.createElement('label');
+  label.className = 'overlay-effect';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.value = e.id;
+  const name = document.createElement('span');
+  name.textContent = e.name;
+  label.appendChild(cb);
+  label.appendChild(name);
+  overlayEffectsEl.appendChild(label);
+  effectChecks[e.id] = cb;
+  cb.addEventListener('change', applyEffects);
+}
+
+function applyEffects(): void {
+  const ids = OVERLAY_EFFECTS.map((e) => e.id).filter((id) => effectChecks[id].checked);
+  app.setOverlayEffects(ids);
+  overlay.setEffects(ids);
+}
+
+function reflectOverlay(enabled: boolean): void {
+  overlayToggle.classList.toggle('active', enabled);
+  overlayEffectsEl.classList.toggle('control-hidden', !enabled);
+}
+
+// Restore persisted overlay state (filter to known effect ids).
+const knownEffectIds = new Set(OVERLAY_EFFECTS.map((e) => e.id));
+const savedEffects = app.getOverlayEffects().filter((id) => knownEffectIds.has(id));
+for (const e of OVERLAY_EFFECTS) effectChecks[e.id].checked = savedEffects.includes(e.id);
+app.setOverlayEffects(savedEffects); // normalize the persisted value (drops any unknown ids)
+overlay.setEffects(savedEffects);
+overlay.setEnabled(app.isImageOverlayEnabled());
+reflectOverlay(app.isImageOverlayEnabled());
+
+overlayToggle.addEventListener('click', () => {
+  const next = !app.isImageOverlayEnabled();
+  app.setImageOverlayEnabled(next);
+  overlay.setEnabled(next);
+  reflectOverlay(next);
+});
+
+window.addEventListener('beforeunload', () => {
+  gallery?.dispose();
+  overlay.dispose();
+});

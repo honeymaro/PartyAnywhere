@@ -7,6 +7,8 @@ export interface Settings {
   manualColor?: string; // hex, e.g. "#4f7cff"
   rotationIntervalSec?: number;
   rotationPaused?: boolean;
+  imageOverlay?: boolean;
+  overlayEffects?: string[];
 }
 
 const KEY = 'music-visualizer:settings:v1';
@@ -31,6 +33,15 @@ export function parseSettings(raw: unknown): Settings {
   }
   if (typeof o.rotationPaused === 'boolean') {
     out.rotationPaused = o.rotationPaused;
+  }
+  if (typeof o.imageOverlay === 'boolean') {
+    out.imageOverlay = o.imageOverlay;
+  }
+  if (Array.isArray(o.overlayEffects) && o.overlayEffects.every((x) => typeof x === 'string')) {
+    out.overlayEffects = o.overlayEffects as string[];
+  } else if (typeof o.overlayEffect === 'string' && o.overlayEffect.length > 0) {
+    // Migrate the legacy single-effect setting to the multi-effect array.
+    out.overlayEffects = [o.overlayEffect];
   }
   return out;
 }
