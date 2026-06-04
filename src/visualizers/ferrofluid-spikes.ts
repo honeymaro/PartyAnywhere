@@ -24,10 +24,12 @@ float spikedSphere(vec3 p, float bass, float mid, float beat, float t) {
   vec3 d = p / max(r, 0.0001);
   float theta = acos(clamp(d.y, -1.0, 1.0));
   float phi   = atan(d.z, d.x);
-  float N = 6.0 + floor(mid * 10.0);
+  // Continuous spike count (no floor) so the pattern morphs smoothly instead of snapping.
+  float N = 6.0 + mid * 10.0;
   float spike = pow(max(0.0, sin(theta * N + t * 0.7)), 8.0) * bass;
   spike      += pow(max(0.0, sin(phi   * N - t * 0.5)), 8.0) * bass * 0.6;
-  float burst = beat * 0.35 * exp(-mod(t, 3.14159) * 2.0);
+  // Burst follows the (smoothed) beat directly — no periodic mod() envelope that pops.
+  float burst = beat * 0.25;
   return r - (0.5 + spike * 0.55 + burst);
 }
 
@@ -98,6 +100,12 @@ export function createFerrofluidSpikes(): Visualizer {
   let program: WebGLProgram;
   const u: Record<string, WebGLUniformLocation | null> = {};
 
+  // Smoothed audio drivers (eased each frame) so the fluid morphs fluidly, not per-frame jitter.
+  let sBass = 0;
+  let sMid = 0;
+  let sTreble = 0;
+  let sBeat = 0;
+
   return {
     id: 'ferrofluid-spikes',
     name: 'Ferrofluid Spikes',
@@ -111,12 +119,19 @@ export function createFerrofluidSpikes(): Visualizer {
     render(frame: RenderFrame) {
       gl.useProgram(program);
       ctx.quad.bind(program);
+      // Frame-rate-independent easing (tau ≈ 0.12s): responsive but never jerky.
+      const k = 1 - Math.exp(-(frame.dt || 0) / 0.12);
+      sBass += (frame.audio.bass - sBass) * k;
+      sMid += (frame.audio.mid - sMid) * k;
+      sTreble += (frame.audio.treble - sTreble) * k;
+      sBeat += (frame.audio.beat - sBeat) * k;
+
       gl.uniform2f(u.uResolution, frame.resolution[0], frame.resolution[1]);
       gl.uniform1f(u.uTime,   frame.time);
-      gl.uniform1f(u.uBass,   frame.audio.bass);
-      gl.uniform1f(u.uMid,    frame.audio.mid);
-      gl.uniform1f(u.uTreble, frame.audio.treble);
-      gl.uniform1f(u.uBeat,   frame.audio.beat);
+      gl.uniform1f(u.uBass,   sBass);
+      gl.uniform1f(u.uMid,    sMid);
+      gl.uniform1f(u.uTreble, sTreble);
+      gl.uniform1f(u.uBeat,   sBeat);
       gl.uniform3f(u.uPrimary, frame.palette.primary[0], frame.palette.primary[1], frame.palette.primary[2]);
       gl.uniform3f(u.uAccent,  frame.palette.accent[0],  frame.palette.accent[1],  frame.palette.accent[2]);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
