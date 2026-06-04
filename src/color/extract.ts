@@ -9,7 +9,8 @@ export interface ExtractOptions {
  * Find the dominant *saturated* color in an RGBA pixel buffer.
  * Pixels are weighted by saturation² and a mid-lightness window, so near-black,
  * near-white, and gray UI chrome (e.g. Spotify's dark background) are down-weighted.
- * Pixels are binned by quantized color; the heaviest bin's weighted average is returned.
+ * Pixels are binned by quantized color; the heaviest bin's weighted average is returned,
+ * then brightness-normalized so a dark source still yields a vivid primary.
  * Returns null when no sufficiently saturated color exists.
  */
 export function extractDominantColor(data: Uint8ClampedArray, opts: ExtractOptions = {}): RGB | null {
@@ -36,7 +37,9 @@ export function extractDominantColor(data: Uint8ClampedArray, opts: ExtractOptio
     const min = Math.min(r, g, b);
     const lightness = (max + min) / 510; // 0..1
     const sat = max === 0 ? 0 : (max - min) / max; // 0..1
-    const lightWindow = 1 - Math.abs(lightness - 0.5) * 2 * 0.6; // peak at mid, floor 0.4
+    // Lenient lightness window: still favors mid-tones but keeps dark, saturated colors
+    // in play (a dark screen's only color is dark — don't penalize it away).
+    const lightWindow = 1 - Math.abs(lightness - 0.5) * 2 * 0.45; // floor 0.55
     const weight = sat * sat * lightWindow;
     if (weight <= 0.0001) continue;
 
@@ -57,5 +60,19 @@ export function extractDominantColor(data: Uint8ClampedArray, opts: ExtractOptio
   }
   if (best < 0) return null;
   const w = weightSum[best];
-  return [rSum[best] / w / 255, gSum[best] / w / 255, bSum[best] / w / 255];
+  let r = rSum[best] / w / 255;
+  let g = gSum[best] / w / 255;
+  let b = bSum[best] / w / 255;
+
+  // Normalize brightness so a dark-but-saturated source yields a vivid, usable primary.
+  // Scale the value up toward a target (never down), preserving hue — the max channel
+  // lands at ~0.85 and the others scale proportionally (no clamping/hue shift).
+  const maxc = Math.max(r, g, b);
+  if (maxc > 0) {
+    const boost = Math.max(1, 0.85 / maxc);
+    r = Math.min(1, r * boost);
+    g = Math.min(1, g * boost);
+    b = Math.min(1, b * boost);
+  }
+  return [r, g, b];
 }
