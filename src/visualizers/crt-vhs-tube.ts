@@ -19,15 +19,26 @@ float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453)
 vec2 barrel(vec2 uv) {
   vec2 d = uv - 0.5;
   float r2 = dot(d, d);
-  float k = 0.18 + 0.06 * uBass;
+  float k = 0.18 + 0.14 * uBass;
   return uv + d * (k * r2 + 0.04 * r2 * r2);
+}
+
+// Procedural plasma color at a UV (sampled 3x for chromatic aberration).
+vec3 tubeContent(vec2 uv, float t) {
+  vec2 p = uv * 2.0 - 1.0;
+  float plasma =  sin(p.x * 3.5 + t)
+                + sin(p.y * 3.5 - t * 1.1)
+                + sin((p.x + p.y) * 2.8 + t * 0.9)
+                + sin(length(p) * 5.0 - t * 1.6 + uLevel * 2.5);
+  float m = 0.5 + 0.5 * sin(plasma * 1.2);
+  return mix(uPrimary, uAccent, m);
 }
 
 void main() {
   vec2 fragUV = gl_FragCoord.xy / uResolution;
 
-  // Vertical hold wobble driven by uBass
-  float holdShift = uBass * 0.025 * sin(uTime * 3.1 + fragUV.y * 8.0);
+  // Vertical hold wobble driven by uBass (stronger)
+  float holdShift = uBass * 0.05 * sin(uTime * 3.1 + fragUV.y * 8.0);
   vec2 distUV = barrel(fragUV + vec2(0.0, holdShift));
 
   // Outside tube: black borders
@@ -36,33 +47,31 @@ void main() {
     return;
   }
 
-  // --- Tracking noise: row displacement on beat ---
+  // --- Tracking noise: row displacement, exaggerated on beats ---
   float rowId = floor(distUV.y * uResolution.y);
-  float beatPhase = floor(uBeat * 4.0);
+  float beatPhase = floor(uTime * 8.0);
   float rowNoise = hash(rowId * 0.31 + beatPhase * 7.13);
-  float trackShift = 0.0;
-  // Rolling bad-track bar
-  float barY = fract(uTime * 0.18 + uBeat * 0.5);
-  float inBar = smoothstep(0.04, 0.0, abs(distUV.y - barY) - 0.015);
-  trackShift = (rowNoise - 0.5) * 0.012 * inBar
-             + (hash(rowId * 0.07 + uTime * 0.3) - 0.5) * 0.004 * uBeat;
+  // Rolling bad-track bar (wider + faster, sweeps harder on a beat)
+  float barY = fract(uTime * 0.25 + uBeat * 0.6);
+  float inBar = smoothstep(0.07, 0.0, abs(distUV.y - barY) - 0.02);
+  float trackShift = (rowNoise - 0.5) * (0.04 + 0.10 * uBeat) * inBar
+             + (hash(rowId * 0.07 + uTime * 0.3) - 0.5) * 0.015 * uBeat;
+  // Whole-frame horizontal jump/tear that snaps on strong beats
+  float jump = (hash(beatPhase * 1.7) - 0.5) * 0.12 * uBeat;
 
-  vec2 tubeUV = distUV + vec2(trackShift, 0.0);
-  tubeUV = clamp(tubeUV, 0.0, 1.0);
+  vec2 tubeUV = clamp(distUV + vec2(trackShift + jump, 0.0), 0.0, 1.0);
 
-  // --- Procedural plasma content layer ---
-  vec2 p = tubeUV * 2.0 - 1.0;
+  // --- Content with chromatic aberration (RGB split grows with bass/beat) ---
   float t = uTime * 0.35;
-  float plasma =  sin(p.x * 3.5 + t)
-                + sin(p.y * 3.5 - t * 1.1)
-                + sin((p.x + p.y) * 2.8 + t * 0.9)
-                + sin(length(p) * 5.0 - t * 1.6 + uLevel * 2.5);
-  float m = 0.5 + 0.5 * sin(plasma * 1.2);
-  vec3 content = mix(uPrimary, uAccent, m);
+  float aberr = 0.004 + 0.02 * uBass + 0.045 * uBeat;
+  vec3 cR = tubeContent(clamp(tubeUV + vec2(aberr, 0.0), 0.0, 1.0), t);
+  vec3 cG = tubeContent(tubeUV, t);
+  vec3 cB = tubeContent(clamp(tubeUV - vec2(aberr, 0.0), 0.0, 1.0), t);
+  vec3 content = vec3(cR.r, cG.g, cB.b);
 
-  // --- Scanlines ---
-  float scanLine = 0.5 + 0.5 * sin(distUV.y * uResolution.y * 3.14159);
-  float scanStrength = 0.55 + 0.1 * uLevel;
+  // --- Scanlines (slowly rolling) ---
+  float scanLine = 0.5 + 0.5 * sin(distUV.y * uResolution.y * 3.14159 - uTime * 6.0);
+  float scanStrength = 0.55 + 0.15 * uLevel;
   content *= mix(1.0, scanLine, scanStrength);
 
   // --- RGB phosphor triad mask ---
@@ -74,14 +83,13 @@ void main() {
   ) * 0.35 + 0.65;
   content *= mask;
 
-  // --- Static grain scaled by uTreble ---
+  // --- Static grain scaled by uTreble (heavier) ---
   float grain = (hash2(tubeUV * uResolution + vec2(uTime * 47.3, uTime * 31.7)) - 0.5);
-  content += grain * (0.06 + 0.18 * uTreble);
+  content += grain * (0.08 + 0.35 * uTreble);
 
-  // --- Bloom/glow: sample neighbours (cheap 5-tap) ---
-  vec2 px = 1.5 / uResolution;
+  // --- Bloom/glow, surges on the beat ---
   vec3 bloom = content * 0.5;
-  float bAmt = 0.08 + 0.12 * uLevel;
+  float bAmt = 0.08 + 0.12 * uLevel + 0.45 * uBeat;
   bloom += mix(uPrimary, uAccent, 0.5) * bAmt * scanLine;
 
   // --- Vignette ---
@@ -90,7 +98,14 @@ void main() {
   vign = clamp(vign, 0.0, 1.0);
   vign = vign * vign;
 
-  vec3 final = (content + bloom * 0.15) * vign;
+  vec3 final = (content + bloom * 0.25) * vign;
+
+  // Beat brightness pop (tube "blooms" on the kick)
+  final *= 1.0 + uBeat * 0.5;
+
+  // Treble dropout: bright VHS scratch lines flicker on high frequencies
+  float scratch = step(0.992, hash(floor(distUV.y * uResolution.y * 0.5) + floor(uTime * 24.0)));
+  final += scratch * uTreble * 0.9;
 
   // Slight desaturation to mimic phosphor aging
   float luma = dot(final, vec3(0.299, 0.587, 0.114));
