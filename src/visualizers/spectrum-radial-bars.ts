@@ -22,12 +22,16 @@ void main() {
   float r = length(uv);
   float a = atan(uv.y, uv.x);
 
-  // Normalise angle to [0,1] for spectrum lookup
+  // Normalised angle [0,1] — only used for the seamless bar-height wobble term below
+  // (its *8 integer multiple keeps it continuous across the wrap).
   float normA = fract(a / TWO_PI + 0.5);
 
-  // Add slow rotation from uTime so it animates even with no audio
-  float lookupA = fract(normA + uTime * 0.04);
-  float specVal = texture(uSpectrum, vec2(lookupA, 0.5)).r;
+  // Spectrum lookup: rotate the angle, then mirror it into [0,1] via a triangle wave so
+  // the bars join seamlessly across the 0/360 wrap. A plain fract() mapping jumps from
+  // ~1 to 0 at the -x axis (last bin vs first bin), which shows as a hard seam.
+  float ra = a + uTime * 0.04 * TWO_PI;
+  float mirrorA = abs(mod(ra + 3.14159265, TWO_PI) - 3.14159265) / 3.14159265;
+  float specVal = texture(uSpectrum, vec2(mirrorA, 0.5)).r;
 
   // Bar height: spectrum drives it, bass expands the ring
   float barH = specVal * 0.6 + 0.005 * sin(uTime * 3.0 + normA * TWO_PI * 8.0);

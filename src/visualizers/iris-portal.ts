@@ -52,9 +52,13 @@ void main() {
   float t = uTime * 0.3;
   float rotation = uMid * 1.5 + t * 0.4;
   float rotAngle = angle + rotation;
+  // Seamless angular basis (periodic across the 0/360 wrap) for noise / color / sparkle.
+  // sin(rotAngle * 60.0) is already seamless (integer multiple), but fbm/palette/hash are not,
+  // so feed them this circular coordinate instead of the raw (discontinuous) angle.
+  vec2 ang = vec2(cos(rotAngle), sin(rotAngle));
 
-  // Iris fiber striations via fbm + sin
-  vec2 fiberCoord = vec2(rotAngle * 9.549297, r * 6.0);
+  // Iris fiber striations via fbm + sin (fbm sampled on the circle → wraps seamlessly)
+  vec2 fiberCoord = ang * (3.0 + r * 4.0);
   float fiber = sin(rotAngle * 60.0 + fbm(fiberCoord + t) * 4.0);
   float fiberFalloff = smoothstep(1.2, 0.05, r);
   float striation = fiber * fiberFalloff;
@@ -71,7 +75,7 @@ void main() {
   float coreGlow = exp(-r * r * 28.0) * (0.6 + uBass * 0.8);
 
   // Thin-film iridescence: cosine palette over radial + angular index
-  float iridIndex = r * 3.5 + rotAngle * 0.15 + striation * 0.18 + t * 0.5;
+  float iridIndex = r * 3.5 + ang.x * 0.5 + striation * 0.18 + t * 0.5;
   vec3 irid = cospalette(
     iridIndex,
     vec3(0.5),
@@ -89,7 +93,7 @@ void main() {
   irisColor *= 0.7 + 0.3 * rings;
 
   // Treble shimmer: sparkle on fibers
-  float sparkle = hash(vec2(floor(rotAngle * 40.0), floor(r * 30.0)) + floor(t * 12.0));
+  float sparkle = hash(floor(ang * 22.0) + floor(r * 30.0) + floor(t * 12.0));
   irisColor += uTreble * sparkle * fiberFalloff * 0.35;
 
   // Fade iris out beyond outer edge

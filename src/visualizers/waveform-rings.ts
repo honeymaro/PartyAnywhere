@@ -21,8 +21,9 @@ void main() {
   float r = length(uv);
   float a = atan(uv.y, uv.x);
 
-  // Sample spectrum at this angle to get per-angle audio displacement
-  float specU = fract(a / TWO_PI + 0.5);
+  // Sample spectrum at this angle. Mirror the angle into [0,1] (abs(a)/PI) so the
+  // mapping is seamless across the 0/360 wrap — fract(a/2PI) jumps from ~1 to 0 there.
+  float specU = abs(a) / 3.14159265;
   float s = texture(uSpectrum, vec2(specU, 0.5)).r;
 
   // Bass expands all rings outward, beat triggers emission pulse
@@ -43,7 +44,6 @@ void main() {
   float radialFade = smoothstep(0.05, 0.35, r) * smoothstep(1.1, 0.55, r);
 
   // Color: alternate primary/accent by ring index, modulate by radius
-  float ringIndex = fract(r * 8.0 * 0.5);
   float colorMix = 0.5 + 0.5 * sin(r * 6.0 + uTime * 0.3);
   vec3 col = mix(uPrimary, uAccent, colorMix);
 
