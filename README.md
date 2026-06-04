@@ -1,8 +1,10 @@
 <div align="center">
 
-# ◆ MUSIC VISUALIZER
+# ◆ PartyAnywhere
 
 ### Share a tab. Play the music. Watch the room come alive.
+
+*Your screen. Your music. Your colors. Bring the party anywhere.*
 
 A browser-based, audio-reactive **WebGL visualizer** that listens to whatever's playing in a shared Chromium tab and turns it into a wall of living light — in **your** colors.
 
