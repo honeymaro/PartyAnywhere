@@ -13,14 +13,15 @@ root.innerHTML = `
   </div>
   <div id="controls">
     <button id="start" type="button">Start screen share</button>
+    <label id="image-label" class="file-btn">Upload image<input id="image-file" type="file" accept="image/*" hidden /></label>
     <button id="fullscreen" type="button" disabled>Fullscreen</button>
     <span class="divider"></span>
     <label>Color:</label>
     <button id="src-screen" type="button" class="src active">Auto (screen)</button>
-    <button id="src-image" type="button" class="src">Image</button>
+    <button id="src-image" type="button" class="src" disabled>Image</button>
     <button id="src-manual" type="button" class="src">Manual</button>
     <input id="color-pick" type="color" value="#4f7cff" class="control-hidden" />
-    <label id="image-label" class="file-btn">Upload image<input id="image-file" type="file" accept="image/*" hidden /></label>
+    <input id="accent-pick" type="color" value="#ff4fa3" class="control-hidden" />
     <button id="overlay-toggle" type="button">Image overlay</button>
     <span id="overlay-effects" class="overlay-effects control-hidden"></span>
     <span class="divider"></span>
@@ -96,6 +97,7 @@ const srcButtons: Record<ColorSourceId, HTMLButtonElement> = {
 };
 
 const colorPick = document.querySelector<HTMLInputElement>('#color-pick')!;
+const accentPick = document.querySelector<HTMLInputElement>('#accent-pick')!;
 
 function highlightSource(id: ColorSourceId): void {
   for (const key of Object.keys(srcButtons) as ColorSourceId[]) {
@@ -104,6 +106,7 @@ function highlightSource(id: ColorSourceId): void {
   // Reveal the manual color picker only when Manual is active. The image upload stays
   // always visible — the uploaded image now also feeds the image overlay, not just color.
   colorPick.classList.toggle('control-hidden', id !== 'manual');
+  accentPick.classList.toggle('control-hidden', id !== 'manual');
 }
 
 (Object.keys(srcButtons) as ColorSourceId[]).forEach((id) => {
@@ -115,10 +118,16 @@ function highlightSource(id: ColorSourceId): void {
 
 // Initialize from persisted settings: color picker value + visibility for the active source.
 colorPick.value = app.getManualColorHex();
+accentPick.value = app.getManualAccentHex();
 highlightSource(app.getColorSource());
 
 colorPick.addEventListener('input', () => {
   app.setManualColor(colorPick.value);
+  highlightSource('manual');
+});
+
+accentPick.addEventListener('input', () => {
+  app.setManualAccent(accentPick.value);
   highlightSource('manual');
 });
 
@@ -129,6 +138,7 @@ imageFile.addEventListener('change', async () => {
   overlay.setImageFile(file);
   try {
     await app.setImageFromFile(file);
+    srcButtons.image.disabled = false; // image-based color is now available
     highlightSource('image');
   } catch (err) {
     status.textContent = `Image load failed: ${(err as Error).message}`;

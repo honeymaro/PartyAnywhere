@@ -2,7 +2,7 @@ import { CaptureService } from './capture/capture-service';
 import { AudioAnalyser } from './audio/audio-analyser';
 import { VisualizerHost } from './gl/visualizer-host';
 import { VisualizerRegistry } from './gl/registry';
-import { hexToRgb, DEFAULT_PALETTE } from './color/color-utils';
+import { hexToRgb, rgbToHex, DEFAULT_PALETTE } from './color/color-utils';
 import { ColorService } from './color/color-service';
 import type { ColorSourceId } from './color/color-service';
 import { ManualColorSource, ImageColorSource, ScreenColorSource } from './color/sources';
@@ -42,7 +42,8 @@ export class App {
   private selected = new Set<string>();
   private started = false;
   private starting = false;
-  private manualColorHex = '#4f7cff';
+  private manualColorHex = rgbToHex(DEFAULT_PALETTE.primary);
+  private manualAccentHex = rgbToHex(DEFAULT_PALETTE.accent);
   private imageOverlayEnabled = false;
   private overlayEffects: string[] = ['pulse'];
   private onFrameCb: ((audio: AudioFrame, dt: number, palette: Palette) => void) | null = null;
@@ -84,10 +85,21 @@ export class App {
       }
     }
 
+    if (saved.manualAccent) {
+      try {
+        this.manualSource.setAccent(hexToRgb(saved.manualAccent));
+        this.manualAccentHex = saved.manualAccent;
+      } catch {
+        // ignore a corrupt saved accent
+      }
+    }
+
     this.imageOverlayEnabled = saved.imageOverlay ?? false;
     this.overlayEffects = saved.overlayEffects ?? ['pulse'];
 
-    this.colorService = new ColorService(DEFAULT_PALETTE, saved.colorSource ?? 'screen');
+    // 'image' color needs an uploaded image, which isn't persisted — fall back to screen on reload.
+    const restoredSource: ColorSourceId = saved.colorSource === 'image' ? 'screen' : (saved.colorSource ?? 'screen');
+    this.colorService = new ColorService(DEFAULT_PALETTE, restoredSource);
     this.colorService.addSource(this.manualSource);
     this.colorService.addSource(this.imageSource);
   }
@@ -97,6 +109,7 @@ export class App {
       selectedIds: [...this.selected],
       colorSource: this.colorService.getActive(),
       manualColor: this.manualColorHex,
+      manualAccent: this.manualAccentHex,
       rotationIntervalSec: this.rotation.getIntervalSec(),
       rotationPaused: this.rotation.isPaused(),
       imageOverlay: this.imageOverlayEnabled,
@@ -271,6 +284,17 @@ export class App {
   setManualColor(hex: string): void {
     this.manualColorHex = hex;
     this.manualSource.setPrimary(hexToRgb(hex));
+    this.colorService.setActive('manual');
+    this.persist();
+  }
+
+  getManualAccentHex(): string {
+    return this.manualAccentHex;
+  }
+
+  setManualAccent(hex: string): void {
+    this.manualAccentHex = hex;
+    this.manualSource.setAccent(hexToRgb(hex));
     this.colorService.setActive('manual');
     this.persist();
   }

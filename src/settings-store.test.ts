@@ -57,4 +57,12 @@ describe('parseSettings', () => {
   it('drops malformed image-overlay fields', () => {
     expect(parseSettings({ imageOverlay: 'yes', overlayEffects: [1, 2] })).toEqual({});
   });
+
+  it('keeps a valid manualAccent', () => {
+    expect(parseSettings({ manualAccent: '#ff0080' })).toEqual({ manualAccent: '#ff0080' });
+  });
+
+  it('drops a malformed manualAccent', () => {
+    expect(parseSettings({ manualAccent: 'pink' })).toEqual({});
+  });
 });

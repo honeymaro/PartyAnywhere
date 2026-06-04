@@ -5,6 +5,7 @@ export interface Settings {
   selectedIds?: string[];
   colorSource?: ColorSourceId;
   manualColor?: string; // hex, e.g. "#4f7cff"
+  manualAccent?: string; // hex
   rotationIntervalSec?: number;
   rotationPaused?: boolean;
   imageOverlay?: boolean;
@@ -27,6 +28,9 @@ export function parseSettings(raw: unknown): Settings {
   }
   if (typeof o.manualColor === 'string' && /^#?[0-9a-fA-F]{6}$/.test(o.manualColor)) {
     out.manualColor = o.manualColor;
+  }
+  if (typeof o.manualAccent === 'string' && /^#?[0-9a-fA-F]{6}$/.test(o.manualAccent)) {
+    out.manualAccent = o.manualAccent;
   }
   if (typeof o.rotationIntervalSec === 'number' && o.rotationIntervalSec >= 3 && o.rotationIntervalSec <= 600) {
     out.rotationIntervalSec = o.rotationIntervalSec;

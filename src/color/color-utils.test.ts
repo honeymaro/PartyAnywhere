@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hexToRgb, lerpRgb } from './color-utils';
+import { hexToRgb, lerpRgb, rgbToHex } from './color-utils';
 
 describe('hexToRgb', () => {
   it('converts white and black', () => {
@@ -27,5 +27,16 @@ describe('lerpRgb', () => {
   });
   it('interpolates the midpoint', () => {
     expect(lerpRgb([0, 0, 0], [1, 1, 1], 0.5)).toEqual([0.5, 0.5, 0.5]);
+  });
+});
+
+describe('rgbToHex', () => {
+  it('converts normalized rgb to hex', () => {
+    expect(rgbToHex([1, 1, 1])).toBe('#ffffff');
+    expect(rgbToHex([0, 0, 0])).toBe('#000000');
+  });
+  it('round-trips with hexToRgb', () => {
+    expect(rgbToHex(hexToRgb('#4f7cff'))).toBe('#4f7cff');
+    expect(rgbToHex(hexToRgb('#ff4fa3'))).toBe('#ff4fa3');
   });
 });

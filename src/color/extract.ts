@@ -1,19 +1,22 @@
-import type { RGB } from '../core/types';
+import type { RGB, Palette } from '../core/types';
+import { rgbToOklab } from './oklab';
+import { deriveAccent } from './palette';
 
 export interface ExtractOptions {
   stride?: number; // sample every Nth pixel for speed (default 4)
   bits?: number; // bits per channel for color binning (default 3 → 8 levels)
 }
 
-/**
- * Find the dominant *saturated* color in an RGBA pixel buffer.
- * Pixels are weighted by saturation² and a mid-lightness window, so near-black,
- * near-white, and gray UI chrome (e.g. Spotify's dark background) are down-weighted.
- * Pixels are binned by quantized color; the heaviest bin's weighted average is returned,
- * then brightness-normalized so a dark source still yields a vivid primary.
- * Returns null when no sufficiently saturated color exists.
- */
-export function extractDominantColor(data: Uint8ClampedArray, opts: ExtractOptions = {}): RGB | null {
+interface Bins {
+  weightSum: Float64Array;
+  rSum: Float64Array;
+  gSum: Float64Array;
+  bSum: Float64Array;
+  binCount: number;
+}
+
+/** Build the saturation²·lightness-weighted color histogram (shared by both extractors). */
+function binize(data: Uint8ClampedArray, opts: ExtractOptions): Bins {
   const stride = opts.stride ?? 4;
   const bits = opts.bits ?? 3;
   const shift = 8 - bits;
@@ -49,24 +52,15 @@ export function extractDominantColor(data: Uint8ClampedArray, opts: ExtractOptio
     gSum[bin] += g * weight;
     bSum[bin] += b * weight;
   }
+  return { weightSum, rSum, gSum, bSum, binCount };
+}
 
-  let best = -1;
-  let bestWeight = 0;
-  for (let i = 0; i < binCount; i++) {
-    if (weightSum[i] > bestWeight) {
-      bestWeight = weightSum[i];
-      best = i;
-    }
-  }
-  if (best < 0) return null;
-  const w = weightSum[best];
-  let r = rSum[best] / w / 255;
-  let g = gSum[best] / w / 255;
-  let b = bSum[best] / w / 255;
-
-  // Normalize brightness so a dark-but-saturated source yields a vivid, usable primary.
-  // Scale the value up toward a target (never down), preserving hue — the max channel
-  // lands at ~0.85 and the others scale proportionally (no clamping/hue shift).
+/** Brightness-normalized average color of a bin (lifts dark colors to a vivid value). */
+function binColor(bins: Bins, i: number): RGB {
+  const w = bins.weightSum[i];
+  let r = bins.rSum[i] / w / 255;
+  let g = bins.gSum[i] / w / 255;
+  let b = bins.bSum[i] / w / 255;
   const maxc = Math.max(r, g, b);
   if (maxc > 0) {
     const boost = Math.max(1, 0.85 / maxc);
@@ -75,4 +69,62 @@ export function extractDominantColor(data: Uint8ClampedArray, opts: ExtractOptio
     b = Math.min(1, b * boost);
   }
   return [r, g, b];
+}
+
+function heaviestBin(bins: Bins): number {
+  let best = -1;
+  let bestWeight = 0;
+  for (let i = 0; i < bins.binCount; i++) {
+    if (bins.weightSum[i] > bestWeight) {
+      bestWeight = bins.weightSum[i];
+      best = i;
+    }
+  }
+  return best;
+}
+
+/**
+ * Find the dominant *saturated* color in an RGBA pixel buffer, brightness-normalized
+ * so a dark source still yields a vivid primary. Returns null when none is saturated.
+ */
+export function extractDominantColor(data: Uint8ClampedArray, opts: ExtractOptions = {}): RGB | null {
+  const bins = binize(data, opts);
+  const best = heaviestBin(bins);
+  return best < 0 ? null : binColor(bins, best);
+}
+
+const HUE_THRESHOLD = 0.7; // ~40° in OKLab hue — minimum separation for a distinct accent
+const CHROMA_MIN = 0.04; // reject near-gray bins as the accent
+
+/**
+ * Extract a two-color palette: the dominant color (primary) plus the heaviest bin whose
+ * OKLab hue differs enough and that isn't near-gray (accent). Falls back to a derived
+ * accent when no distinct second color exists. Returns null when there's no primary.
+ */
+export function extractPalette(data: Uint8ClampedArray, opts: ExtractOptions = {}): Palette | null {
+  const bins = binize(data, opts);
+  const best = heaviestBin(bins);
+  if (best < 0) return null;
+
+  const primary = binColor(bins, best);
+  const pLab = rgbToOklab(primary);
+  const primaryHue = Math.atan2(pLab[2], pLab[1]);
+
+  let accentColor: RGB | null = null;
+  let accentWeight = 0;
+  for (let i = 0; i < bins.binCount; i++) {
+    if (i === best || bins.weightSum[i] <= accentWeight) continue;
+    const color = binColor(bins, i);
+    const lab = rgbToOklab(color);
+    const chroma = Math.hypot(lab[1], lab[2]);
+    if (chroma < CHROMA_MIN) continue;
+    let dHue = Math.abs(Math.atan2(lab[2], lab[1]) - primaryHue);
+    if (dHue > Math.PI) dHue = 2 * Math.PI - dHue;
+    if (dHue < HUE_THRESHOLD) continue;
+    accentWeight = bins.weightSum[i];
+    accentColor = color;
+  }
+
+  const accent = accentColor ?? deriveAccent(primary);
+  return { primary, accent };
 }

@@ -10,6 +10,14 @@ export function hexToRgb(hex: string): RGB {
   ];
 }
 
+export function rgbToHex(c: RGB): string {
+  const ch = (v: number): string =>
+    Math.round(Math.min(1, Math.max(0, v)) * 255)
+      .toString(16)
+      .padStart(2, '0');
+  return `#${ch(c[0])}${ch(c[1])}${ch(c[2])}`;
+}
+
 // used by Plan 2 color interpolation
 export function lerpRgb(a: RGB, b: RGB, t: number): RGB {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];

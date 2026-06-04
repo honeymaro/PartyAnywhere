@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rotateHue, derivePalette } from './palette';
+import { rotateHue, deriveAccent } from './palette';
 import type { RGB } from '../core/types';
 
 describe('rotateHue', () => {
@@ -10,12 +10,11 @@ describe('rotateHue', () => {
   });
 });
 
-describe('derivePalette', () => {
-  it('keeps the primary and produces a different accent', () => {
+describe('deriveAccent', () => {
+  it('returns a hue-rotated color distinct from the primary', () => {
     const primary: RGB = [0.8, 0.2, 0.2];
-    const p = derivePalette(primary);
-    expect(p.primary).toEqual(primary);
-    const differs = p.accent.some((v, i) => Math.abs(v - primary[i]) > 0.05);
+    const accent = deriveAccent(primary);
+    const differs = accent.some((v, i) => Math.abs(v - primary[i]) > 0.05);
     expect(differs).toBe(true);
   });
 });

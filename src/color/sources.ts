@@ -1,7 +1,6 @@
 import type { Palette, RGB } from '../core/types';
 import type { ColorSource, ColorSourceId } from './color-service';
-import { derivePalette } from './palette';
-import { extractDominantColor } from './extract';
+import { extractPalette } from './extract';
 
 /** Draws a source into an offscreen canvas of the given size and returns its RGBA bytes. */
 function sampleToData(
@@ -21,15 +20,18 @@ function makeCanvas(size: number): HTMLCanvasElement {
   return c;
 }
 
-/** User-picked color. */
+/** User-picked primary + accent colors (each set independently). */
 export class ManualColorSource implements ColorSource {
   readonly id: ColorSourceId = 'manual';
   private palette: Palette;
   constructor(initial: Palette) {
-    this.palette = initial;
+    this.palette = { primary: initial.primary, accent: initial.accent };
   }
   setPrimary(primary: RGB): void {
-    this.palette = derivePalette(primary);
+    this.palette = { primary, accent: this.palette.accent };
+  }
+  setAccent(accent: RGB): void {
+    this.palette = { primary: this.palette.primary, accent };
   }
   target(): Palette | null {
     return this.palette;
@@ -44,8 +46,8 @@ export class ImageColorSource implements ColorSource {
 
   setImage(img: HTMLImageElement): void {
     const data = sampleToData(img, this.canvas);
-    const dom = data ? extractDominantColor(data) : null;
-    if (dom) this.palette = derivePalette(dom);
+    const pal = data ? extractPalette(data) : null;
+    if (pal) this.palette = pal;
   }
   target(): Palette | null {
     return this.palette;
@@ -72,8 +74,8 @@ export class ScreenColorSource implements ColorSource {
     if (this.video.readyState < 2 || this.video.videoWidth === 0) return;
     this.lastSample = now;
     const data = sampleToData(this.video, this.canvas);
-    const dom = data ? extractDominantColor(data) : null;
-    if (dom) this.palette = derivePalette(dom);
+    const pal = data ? extractPalette(data) : null;
+    if (pal) this.palette = pal;
   }
   target(): Palette | null {
     return this.palette;
