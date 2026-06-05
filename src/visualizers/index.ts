@@ -56,6 +56,7 @@ import { createWoodGrainMarble } from './wood-grain-marble';
 import { createWormholeNeon } from './wormhole-neon';
 import { createWormholeCosmic } from './wormhole-cosmic';
 import { createWormholeLensing } from './wormhole-lensing';
+import { createFractalPyramid } from './fractal-pyramid';
 
 export interface VisualizerEntry {
   info: VisualizerInfo;
@@ -120,6 +121,7 @@ export const VISUALIZERS: VisualizerEntry[] = [
   { info: { id: 'wormhole-neon', name: 'Neon Wormhole' }, factory: createWormholeNeon },
   { info: { id: 'wormhole-cosmic', name: 'Cosmic Wormhole' }, factory: createWormholeCosmic },
   { info: { id: 'wormhole-lensing', name: 'Lensing Wormhole' }, factory: createWormholeLensing },
+  { info: { id: 'fractal-pyramid', name: 'Fractal Pyramid' }, factory: createFractalPyramid },
 ];
 
 export function registerAll(registry: VisualizerRegistry): void {
