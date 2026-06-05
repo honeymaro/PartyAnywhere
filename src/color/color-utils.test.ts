@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hexToRgb, lerpRgb, rgbToHex } from './color-utils';
+import { hexToRgb, rgbToHex } from './color-utils';
 
 describe('hexToRgb', () => {
   it('converts white and black', () => {
@@ -17,16 +17,6 @@ describe('hexToRgb', () => {
   });
   it('throws on a non-hex string', () => {
     expect(() => hexToRgb('nothex')).toThrow('Invalid hex color: nothex');
-  });
-});
-
-describe('lerpRgb', () => {
-  it('returns endpoints at t=0 and t=1', () => {
-    expect(lerpRgb([0, 0, 0], [1, 1, 1], 0)).toEqual([0, 0, 0]);
-    expect(lerpRgb([0, 0, 0], [1, 1, 1], 1)).toEqual([1, 1, 1]);
-  });
-  it('interpolates the midpoint', () => {
-    expect(lerpRgb([0, 0, 0], [1, 1, 1], 0.5)).toEqual([0.5, 0.5, 0.5]);
   });
 });
 

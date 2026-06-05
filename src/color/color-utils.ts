@@ -18,11 +18,6 @@ export function rgbToHex(c: RGB): string {
   return `#${ch(c[0])}${ch(c[1])}${ch(c[2])}`;
 }
 
-// used by Plan 2 color interpolation
-export function lerpRgb(a: RGB, b: RGB, t: number): RGB {
-  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-}
-
 export const DEFAULT_PALETTE: Palette = {
   primary: hexToRgb('#4f7cff'),
   accent: hexToRgb('#ff4fa3'),

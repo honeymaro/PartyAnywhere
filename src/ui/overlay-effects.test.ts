@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pulseScale, bobOffset, createEffect, OVERLAY_EFFECTS } from './overlay-effects';
+import { pulseScale, bobOffset, OVERLAY_EFFECTS } from './overlay-effects';
 
 describe('pulseScale', () => {
   it('is 1 at rest and grows with bass and beat', () => {
@@ -22,14 +22,11 @@ describe('bobOffset', () => {
   });
 });
 
-describe('createEffect / OVERLAY_EFFECTS', () => {
+describe('OVERLAY_EFFECTS', () => {
   it('lists the four composable effects (no Static — none-checked is static)', () => {
     expect(OVERLAY_EFFECTS.map((e) => e.id)).toEqual(['pulse', 'glow', 'spin', 'bob']);
   });
-  it('creates the requested effect', () => {
-    expect(createEffect('spin')?.id).toBe('spin');
-  });
-  it('returns null for an unknown id', () => {
-    expect(createEffect('nope')).toBeNull();
+  it('each factory builds an effect whose id matches its entry', () => {
+    for (const e of OVERLAY_EFFECTS) expect(e.factory().id).toBe(e.id);
   });
 });

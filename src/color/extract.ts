@@ -83,16 +83,6 @@ function heaviestBin(bins: Bins): number {
   return best;
 }
 
-/**
- * Find the dominant *saturated* color in an RGBA pixel buffer, brightness-normalized
- * so a dark source still yields a vivid primary. Returns null when none is saturated.
- */
-export function extractDominantColor(data: Uint8ClampedArray, opts: ExtractOptions = {}): RGB | null {
-  const bins = binize(data, opts);
-  const best = heaviestBin(bins);
-  return best < 0 ? null : binColor(bins, best);
-}
-
 const HUE_THRESHOLD = 0.7; // ~40° in OKLab hue — minimum separation for a distinct accent
 const CHROMA_MIN = 0.04; // reject near-gray bins as the accent
 

@@ -107,9 +107,3 @@ export const OVERLAY_EFFECTS: { id: string; name: string; factory: OverlayEffect
   { id: 'spin', name: 'Spin', factory: createSpin },
   { id: 'bob', name: 'Bob', factory: createBob },
 ];
-
-/** Create an effect instance by id, or null if the id is unknown. */
-export function createEffect(id: string): OverlayEffect | null {
-  const entry = OVERLAY_EFFECTS.find((e) => e.id === id);
-  return entry ? entry.factory() : null;
-}
