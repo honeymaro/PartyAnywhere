@@ -18,7 +18,6 @@ root.innerHTML = `
       <div class="ctl-main">
         <span class="ctl-group">
           <button id="start" type="button">Start screen share</button>
-          <label id="image-label" class="file-btn">Select image<input id="image-file" type="file" accept="image/*" hidden /></label>
           <button id="fullscreen" type="button" disabled>⛶ Fullscreen</button>
         </span>
       </div>
@@ -30,11 +29,14 @@ root.innerHTML = `
       </div>
       <div class="ctl-main">
         <span class="ctl-group">
+          <label id="image-label" class="file-btn">Select image<input id="image-file" type="file" accept="image/*" hidden /></label>
           <button id="overlay-toggle" type="button">Image overlay</button>
         </span>
       </div>
     </div>
     <div id="transport" class="ctl-float">
+      <button id="gallery-toggle" type="button">Visualizers ▦</button>
+      <span class="ctl-sep"></span>
       <button id="rot-prev" type="button">◀</button>
       <button id="rot-pause" type="button">⏸ Pause</button>
       <button id="rot-next" type="button">▶</button>
@@ -43,11 +45,6 @@ root.innerHTML = `
       <input id="rot-interval" type="number" min="3" max="600" value="20" />
     </div>
     <div id="setup">
-      <div class="ctl-main">
-        <span class="ctl-group">
-          <button id="gallery-toggle" type="button">Visualizers ▦</button>
-        </span>
-      </div>
       <div class="ctl-main">
         <span class="ctl-group">
           <label>Color</label>
