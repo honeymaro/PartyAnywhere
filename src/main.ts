@@ -5,45 +5,77 @@ import { VISUALIZERS } from './visualizers/index';
 import { PreviewGallery } from './ui/preview-gallery';
 import { ImageOverlay } from './ui/image-overlay';
 import { OVERLAY_EFFECTS } from './ui/overlay-effects';
+import { setupControlsAutohide } from './ui/controls-autohide';
+import { applyUiPalette } from './ui/ui-palette';
+import { hexToRgb } from './color/color-utils';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
 root.innerHTML = `
   <div id="stage">
     <canvas id="view"></canvas>
-  </div>
-  <div id="controls">
-    <button id="start" type="button">Start screen share</button>
-    <label id="image-label" class="file-btn">Upload image<input id="image-file" type="file" accept="image/*" hidden /></label>
-    <button id="fullscreen" type="button" disabled>Fullscreen</button>
-    <span class="divider"></span>
-    <label>Color:</label>
-    <button id="src-screen" type="button" class="src active">Auto (screen)</button>
-    <button id="src-image" type="button" class="src" disabled>Image</button>
-    <button id="src-manual" type="button" class="src">Manual</button>
-    <input id="color-pick" type="color" value="#4f7cff" class="control-hidden" />
-    <input id="accent-pick" type="color" value="#ff4fa3" class="control-hidden" />
-    <button id="overlay-toggle" type="button">Image overlay</button>
-    <span id="overlay-effects" class="overlay-effects control-hidden"></span>
-    <span class="divider"></span>
-    <button id="rot-prev" type="button">◀</button>
-    <button id="rot-pause" type="button">⏸ Pause</button>
-    <button id="rot-next" type="button">▶</button>
-    <label>Rotate (sec):</label>
-    <input id="rot-interval" type="number" min="3" max="600" value="20" />
-    <button id="gallery-toggle" type="button">Visualizers ▦</button>
-    <span class="divider"></span>
     <span id="status">Idle</span>
-  </div>
-  <div id="gallery" class="hidden">
-    <div class="gallery-head">
-      <h2>Select Visualizers</h2>
-      <div class="gallery-head-actions">
-        <button id="gallery-all" type="button">Select all</button>
-        <button id="gallery-none" type="button">Deselect all</button>
-        <button id="gallery-close" type="button">Close ✕</button>
+    <div id="controls" class="ctl-bar">
+      <div class="ctl-main">
+        <span class="ctl-group">
+          <button id="start" type="button">Start screen share</button>
+          <label id="image-label" class="file-btn">Select image<input id="image-file" type="file" accept="image/*" hidden /></label>
+          <button id="fullscreen" type="button" disabled>⛶ Fullscreen</button>
+        </span>
       </div>
     </div>
-    <div id="gallery-grid"></div>
+    <div id="controls-right" class="ctl-bar">
+      <div id="overlay-context" class="ctl-context control-hidden">
+        <label>Effects</label>
+        <span id="overlay-effects" class="overlay-effects"></span>
+      </div>
+      <div class="ctl-main">
+        <span class="ctl-group">
+          <button id="overlay-toggle" type="button">Image overlay</button>
+        </span>
+      </div>
+    </div>
+    <div id="transport" class="ctl-float">
+      <button id="rot-prev" type="button">◀</button>
+      <button id="rot-pause" type="button">⏸ Pause</button>
+      <button id="rot-next" type="button">▶</button>
+      <span class="ctl-sep"></span>
+      <label>Rotate (s)</label>
+      <input id="rot-interval" type="number" min="3" max="600" value="20" />
+    </div>
+    <div id="setup">
+      <div class="ctl-main">
+        <span class="ctl-group">
+          <button id="gallery-toggle" type="button">Visualizers ▦</button>
+        </span>
+      </div>
+      <div class="ctl-main">
+        <span class="ctl-group">
+          <label>Color</label>
+          <span class="segmented">
+            <button id="src-screen" type="button" class="src active">Auto</button>
+            <button id="src-image" type="button" class="src" disabled>From image</button>
+            <button id="src-manual" type="button" class="src">Manual</button>
+          </span>
+        </span>
+      </div>
+      <div id="color-context" class="ctl-context control-hidden">
+        <label>Primary</label>
+        <input id="color-pick" type="color" value="#4f7cff" />
+        <label>Accent</label>
+        <input id="accent-pick" type="color" value="#ff4fa3" />
+      </div>
+    </div>
+    <div id="gallery" class="hidden">
+      <div class="gallery-head">
+        <h2>Select Visualizers</h2>
+        <div class="gallery-head-actions">
+          <button id="gallery-all" type="button">Select all</button>
+          <button id="gallery-none" type="button">Deselect all</button>
+          <button id="gallery-close" type="button">Close ✕</button>
+        </div>
+      </div>
+      <div id="gallery-grid"></div>
+    </div>
   </div>
 `;
 
@@ -55,12 +87,16 @@ const fsBtn = document.querySelector<HTMLButtonElement>('#fullscreen')!;
 
 const app = new App(canvas);
 const overlay = new ImageOverlay(stage);
-app.onFrame((audio, dt, palette) => overlay.update(audio, dt, palette));
+app.onFrame((audio, dt, palette) => {
+  overlay.update(audio, dt, palette);
+  applyUiPalette(stage, palette.primary, palette.accent);
+});
 
 app.onStopped(() => {
   status.classList.remove('warn');
   status.textContent = 'Idle';
-  fsBtn.disabled = true;
+  // Don't disable while still fullscreen — that would trap the user (Exit unreachable).
+  fsBtn.disabled = !document.fullscreenElement;
   overlay.reset();
 });
 
@@ -87,8 +123,14 @@ startBtn.addEventListener('click', async () => {
 });
 
 fsBtn.addEventListener('click', () => {
-  void app.enterFullscreen();
+  void app.toggleFullscreen().catch(() => undefined);
 });
+
+document.addEventListener('fullscreenchange', () => {
+  fsBtn.textContent = document.fullscreenElement ? '⛶ Exit' : '⛶ Fullscreen';
+});
+
+setupControlsAutohide(stage);
 
 const srcButtons: Record<ColorSourceId, HTMLButtonElement> = {
   screen: document.querySelector<HTMLButtonElement>('#src-screen')!,
@@ -98,15 +140,16 @@ const srcButtons: Record<ColorSourceId, HTMLButtonElement> = {
 
 const colorPick = document.querySelector<HTMLInputElement>('#color-pick')!;
 const accentPick = document.querySelector<HTMLInputElement>('#accent-pick')!;
+const colorContext = document.querySelector<HTMLDivElement>('#color-context')!;
+const overlayContext = document.querySelector<HTMLDivElement>('#overlay-context')!;
 
 function highlightSource(id: ColorSourceId): void {
   for (const key of Object.keys(srcButtons) as ColorSourceId[]) {
     srcButtons[key].classList.toggle('active', key === id);
   }
-  // Reveal the manual color picker only when Manual is active. The image upload stays
+  // Reveal the manual color pickers only when Manual is active. The image upload stays
   // always visible — the uploaded image now also feeds the image overlay, not just color.
-  colorPick.classList.toggle('control-hidden', id !== 'manual');
-  accentPick.classList.toggle('control-hidden', id !== 'manual');
+  colorContext.classList.toggle('control-hidden', id !== 'manual');
 }
 
 (Object.keys(srcButtons) as ColorSourceId[]).forEach((id) => {
@@ -119,15 +162,18 @@ function highlightSource(id: ColorSourceId): void {
 // Initialize from persisted settings: color picker value + visibility for the active source.
 colorPick.value = app.getManualColorHex();
 accentPick.value = app.getManualAccentHex();
+applyUiPalette(stage, hexToRgb(app.getManualColorHex()), hexToRgb(app.getManualAccentHex()));
 highlightSource(app.getColorSource());
 
 colorPick.addEventListener('input', () => {
   app.setManualColor(colorPick.value);
+  applyUiPalette(stage, hexToRgb(colorPick.value), hexToRgb(accentPick.value));
   highlightSource('manual');
 });
 
 accentPick.addEventListener('input', () => {
   app.setManualAccent(accentPick.value);
+  applyUiPalette(stage, hexToRgb(colorPick.value), hexToRgb(accentPick.value));
   highlightSource('manual');
 });
 
@@ -237,7 +283,8 @@ function applyEffects(): void {
 
 function reflectOverlay(enabled: boolean): void {
   overlayToggle.classList.toggle('active', enabled);
-  overlayEffectsEl.classList.toggle('control-hidden', !enabled);
+  overlayToggle.textContent = `Image overlay: ${enabled ? 'On' : 'Off'}`;
+  overlayContext.classList.toggle('control-hidden', !enabled);
 }
 
 // Restore persisted overlay state (filter to known effect ids).

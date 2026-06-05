@@ -35,8 +35,10 @@ float noise(vec3 p) {
 }
 
 float fbm(vec3 p) {
+  // 3 octaves (was 5): fbm runs once per march step, so each octave costs
+  // 8 hash * step count. The top two octaves added little to soft gas density.
   float v = 0.0, a = 0.5;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 3; i++) {
     v += a * noise(p);
     p = p * 2.1 + vec3(5.7, 3.2, 1.9);
     a *= 0.5;
@@ -62,14 +64,14 @@ void main() {
 
   // Ray slab march through volumetric gas cloud
   float tNear = 1.0, tFar = 4.0;
-  int steps = 40;
+  int steps = 24;
   float dt = (tFar - tNear) / float(steps);
 
   vec3 accum = vec3(0.0);
   float transmittance = 1.0;
   float bloomScale = 1.0 + uBeat * 1.8;
 
-  for (int i = 0; i < 40; i++) {
+  for (int i = 0; i < 24; i++) {
     float tStep = tNear + (float(i) + 0.5) * dt;
     vec3 p = ro + rd * tStep;
 

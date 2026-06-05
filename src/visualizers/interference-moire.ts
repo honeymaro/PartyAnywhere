@@ -20,15 +20,12 @@ float grating(vec2 uv, vec2 dir, float freq) {
 void main() {
   vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution) / min(uResolution.x, uResolution.y);
 
-  // Base grating frequency driven by bass; snapped by beat for rhythmic punch
-  float freq = 18.0 + uBass * 24.0;
+  // Base grating frequency, gently lifted by bass
+  float freq = 16.0 + uBass * 8.0;
 
-  // Beat snaps the rotation angle in discrete steps for rhythmic grid shifts
-  float beatSnap = floor(uBeat * 6.0 + 0.5) / 6.0;
-  float snapAngle = beatSnap * 1.5708; // pi/2 steps
-
-  // Continuous rotation driven by mid; beat injects a discrete angle snap
-  float angle = uTime * (0.18 + uMid * 0.55) + snapAngle;
+  // Slow continuous rotation driven by mid; beat adds a soft decaying nudge
+  // (no discrete angle snap — that strobed the whole grid on every beat)
+  float angle = uTime * (0.12 + uMid * 0.18) + uBeat * 0.15;
 
   // Grating 1: fixed horizontal direction
   vec2 dir1 = vec2(1.0, 0.0);
@@ -42,8 +39,8 @@ void main() {
   // Moire pattern: product emphasises constructive/destructive interference
   float moire = g1 * g2;
 
-  // Treble sharpens the band edges via a power curve
-  float sharpness = 1.0 + uTreble * 5.0;
+  // Treble gently sharpens the band edges via a power curve
+  float sharpness = 1.0 + uTreble * 1.5;
   float bands = sign(moire) * pow(abs(moire), 1.0 / sharpness);
 
   // Map [-1,1] -> [0,1]
@@ -53,7 +50,7 @@ void main() {
   vec3 col = mix(uPrimary, uAccent, t);
 
   // Constructive interference bloom: brighten where both gratings are near +1
-  float bloom = smoothstep(0.6, 1.0, moire) * (0.4 + uTreble * 0.6);
+  float bloom = smoothstep(0.6, 1.0, moire) * (0.25 + uTreble * 0.25);
   col += uAccent * bloom;
 
   // Subtle diagonal secondary grating for extra moiré depth

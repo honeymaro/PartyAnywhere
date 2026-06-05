@@ -22,6 +22,9 @@ body,
   inset: 0;
   width: 100%;
   height: 100%;
+  --ui-primary: #4f7cff;
+  --ui-accent: #ff4fa3;
+  --ui-on-primary: #111;
 }
 
 #view {
@@ -50,37 +53,118 @@ body,
   will-change: transform, filter;
 }
 
-#controls {
-  position: fixed;
+.ctl-bar {
+  position: absolute;
   bottom: 16px;
-  left: 16px;
-  right: 16px;
   z-index: 10;
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(8px);
+  flex-direction: column;
+  gap: 8px;
   font-family: system-ui, sans-serif;
   color: #fff;
 }
 
-#controls button {
+#controls {
+  left: 16px;
+  align-items: flex-start;
+}
+
+#controls-right {
+  right: 16px;
+  align-items: flex-end;
+}
+
+.ctl-main,
+.ctl-context,
+.ctl-float {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 8px 14px;
+  border-radius: 18px;
+  backdrop-filter: blur(20px) saturate(1.3);
+  background: rgba(18, 18, 24, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.ctl-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ctl-sep {
+  width: 1px;
+  align-self: stretch;
+  min-height: 20px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 4px;
+}
+
+/* Floating single-purpose control regions (transport, gallery access). */
+.ctl-float {
+  position: absolute;
+  z-index: 10;
+}
+
+/* Top-right setup stack: Visualizers, Color source, and the manual color pickers. */
+#setup {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+#transport {
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.ctl-main button,
+.ctl-context button,
+.ctl-float button {
   padding: 8px 14px;
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
   cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s, transform 0.08s;
 }
 
-#controls button:disabled {
+.ctl-main button:disabled,
+.ctl-context button:disabled,
+.ctl-float button:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.segmented {
+  display: inline-flex;
+}
+
+.segmented .src {
+  border-radius: 0;
+  border-right-width: 0;
+}
+
+.segmented .src:first-child {
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+
+.segmented .src:last-child {
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+  border-right-width: 1px;
 }
 
 .control-hidden {
@@ -88,9 +172,19 @@ body,
 }
 
 #status {
-  font-size: 14px;
-  opacity: 0.85;
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
   max-width: 520px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  color: #fff;
+  opacity: 0.85;
 }
 
 #status.warn {
@@ -99,23 +193,29 @@ body,
   font-weight: 600;
 }
 
-#controls label {
+.ctl-main label,
+.ctl-context label,
+.ctl-float label {
   font-size: 13px;
   opacity: 0.85;
 }
 
-.divider {
-  width: 1px;
-  height: 22px;
-  background: rgba(255, 255, 255, 0.2);
+/* Active state follows the live music palette, with auto-readable text. */
+.ctl-main button.active,
+.ctl-context button.active,
+.ctl-float button.active {
+  background: var(--ui-primary, #4f7cff);
+  border-color: var(--ui-primary, #4f7cff);
+  color: var(--ui-on-primary, #111);
 }
 
-#controls button.src.active {
-  background: rgba(255, 255, 255, 0.28);
-  border-color: rgba(255, 255, 255, 0.6);
+.ctl-main button:hover:not(:disabled):not(.active),
+.ctl-context button:hover:not(:disabled):not(.active),
+.ctl-float button:hover:not(:disabled):not(.active) {
+  border-color: var(--ui-accent, #ff4fa3);
 }
 
-#controls input[type='color'] {
+.ctl-context input[type='color'] {
   width: 36px;
   height: 32px;
   padding: 0;
@@ -133,7 +233,8 @@ body,
   cursor: pointer;
 }
 
-#controls input[type='number'] {
+.ctl-context input[type='number'],
+.ctl-float input[type='number'] {
   width: 56px;
   padding: 6px 8px;
   border: 1px solid rgba(255, 255, 255, 0.25);
@@ -143,7 +244,7 @@ body,
 }
 
 #gallery {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 20;
   display: flex;
@@ -260,4 +361,47 @@ body,
   gap: 4px;
   font-size: 13px;
   cursor: pointer;
+}
+
+#controls,
+#controls-right,
+#status,
+#transport,
+#setup {
+  transition: opacity 0.25s ease;
+}
+
+#stage.controls-hidden {
+  cursor: none;
+}
+
+#stage.controls-hidden #controls,
+#stage.controls-hidden #controls-right,
+#stage.controls-hidden #status,
+#stage.controls-hidden #transport,
+#stage.controls-hidden #setup {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes ctx-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ctl-main button:active,
+  .ctl-context button:active,
+  .ctl-float button:active {
+    transform: scale(0.96);
+  }
+  .ctl-context:not(.control-hidden) {
+    animation: ctx-in 0.2s ease;
+  }
 }

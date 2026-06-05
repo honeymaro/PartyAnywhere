@@ -31,9 +31,9 @@ vec2 blobCenter(int i, float t, float speed) {
 void main() {
   vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution) / min(uResolution.x, uResolution.y);
 
-  float t = uTime * 0.25;
-  float speed = 1.0 + uMid * 2.5;
-  float radiusSq = 0.018 * (1.0 + uBass * 2.2);
+  float t = uTime * 0.18;
+  float speed = 1.0 + uMid * 0.6;
+  float radiusSq = 0.018 * (1.0 + uBass * 0.8);
 
   // Sum inverse-square potential from 6 blobs
   float potential = 0.0;
@@ -43,8 +43,8 @@ void main() {
     potential += radiusSq / dot(d, d);
   }
 
-  // uBeat raises the iso-threshold so blobs merge
-  float threshold = 1.0 + uBeat * 1.8;
+  // uBeat gently raises the iso-threshold so blobs merge
+  float threshold = 1.0 + uBeat * 0.5;
 
   // Normalized field value relative to threshold
   float field = potential / threshold;
@@ -52,13 +52,13 @@ void main() {
   // Blob body: smooth iso-surface
   float body = smoothstep(0.85, 1.05, field);
 
-  // Inner glow rings: band the field with sine
-  float rings = 0.5 + 0.5 * sin(field * 12.0 - uTime * 1.5);
-  float innerGlow = body * rings * 0.55;
+  // Inner glow rings: band the field with a slow sine
+  float rings = 0.5 + 0.5 * sin(field * 8.0 - uTime * 0.9);
+  float innerGlow = body * rings * 0.35;
 
-  // Surface noise driven by uTreble
-  float noiseVal = sin(uv.x * 31.7 + uTime * 3.1) * sin(uv.y * 27.3 - uTime * 2.4);
-  float surfaceNoise = uTreble * 0.08 * noiseVal * body;
+  // Surface shimmer driven by uTreble (low frequency, slow drift)
+  float noiseVal = sin(uv.x * 14.0 + uTime * 1.2) * sin(uv.y * 12.0 - uTime * 0.9);
+  float surfaceNoise = uTreble * 0.04 * noiseVal * body;
 
   // Halo: field just below threshold
   float haloMask = smoothstep(0.55, 0.85, field) * (1.0 - body);

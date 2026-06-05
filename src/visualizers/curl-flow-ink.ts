@@ -31,9 +31,12 @@ float noise(vec2 p) {
 }
 
 float fbm(vec2 p) {
+  // 3 octaves (was 5): this fbm is evaluated ~3x per curlDir and ~8x per pixel
+  // across the streamline loops, so each octave is very expensive. The top two
+  // octaves contributed little detail (amp 0.125 / 0.0625) at large perf cost.
   float v = 0.0;
   float amp = 0.5;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 3; i++) {
     v += amp * noise(p);
     p = p * 2.1 + vec2(1.7, 9.3);
     amp *= 0.5;
@@ -60,10 +63,11 @@ void main() {
 
   vec2 p = uv * 2.5 + vec2(uTime * 0.05, uTime * 0.03);
 
-  // Advect backward along curl field via 8-step streamline integration
+  // Advect backward along curl field via 5-step streamline integration
+  // (was 8; larger stepSize keeps roughly the same total advection distance).
   vec2 traced = p;
-  float stepSize = 0.065 * speed * swirl;
-  for (int i = 0; i < 8; i++) {
+  float stepSize = 0.1 * speed * swirl;
+  for (int i = 0; i < 5; i++) {
     vec2 curl = curlDir(traced + uTime * 0.04) * turbulence;
     traced -= curl * stepSize;
   }
@@ -76,7 +80,7 @@ void main() {
   // Add a second layer at different scale for complexity
   vec2 p2 = uv * 4.8 + vec2(-uTime * 0.07, uTime * 0.02);
   vec2 traced2 = p2;
-  for (int i = 0; i < 6; i++) {
+  for (int i = 0; i < 3; i++) {
     vec2 curl = curlDir(traced2 + uTime * 0.06 + vec2(5.3, 2.7)) * turbulence * 0.7;
     traced2 -= curl * stepSize * 0.8;
   }

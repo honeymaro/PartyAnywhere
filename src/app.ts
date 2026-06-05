@@ -177,9 +177,13 @@ export class App {
     this.onStoppedCb = cb;
   }
 
-  async enterFullscreen(): Promise<void> {
-    // Fullscreen the #stage wrapper (canvas + image overlay), not just the canvas.
-    await (this.canvas.parentElement ?? this.canvas).requestFullscreen();
+  /** Toggle fullscreen on the #stage wrapper (canvas + overlay + controls + gallery). */
+  async toggleFullscreen(): Promise<void> {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else {
+      await (this.canvas.parentElement ?? this.canvas).requestFullscreen();
+    }
   }
 
   // used by the Plan 3 gallery
