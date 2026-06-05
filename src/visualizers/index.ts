@@ -53,6 +53,9 @@ import { createTruchetWeave } from './truchet-weave';
 import { createRaymarchTwistTunnel } from './raymarch-twist-tunnel';
 import { createWatercolorBleed } from './watercolor-bleed';
 import { createWoodGrainMarble } from './wood-grain-marble';
+import { createWormholeNeon } from './wormhole-neon';
+import { createWormholeCosmic } from './wormhole-cosmic';
+import { createWormholeLensing } from './wormhole-lensing';
 
 export interface VisualizerEntry {
   info: VisualizerInfo;
@@ -114,6 +117,9 @@ export const VISUALIZERS: VisualizerEntry[] = [
   { info: { id: 'raymarch-twist-tunnel', name: 'Twisting SDF Tunnel' }, factory: createRaymarchTwistTunnel },
   { info: { id: 'watercolor-bleed', name: 'Watercolor Bleed' }, factory: createWatercolorBleed },
   { info: { id: 'wood-grain-marble', name: 'Wood Grain and Marble' }, factory: createWoodGrainMarble },
+  { info: { id: 'wormhole-neon', name: 'Neon Wormhole' }, factory: createWormholeNeon },
+  { info: { id: 'wormhole-cosmic', name: 'Cosmic Wormhole' }, factory: createWormholeCosmic },
+  { info: { id: 'wormhole-lensing', name: 'Lensing Wormhole' }, factory: createWormholeLensing },
 ];
 
 export function registerAll(registry: VisualizerRegistry): void {
