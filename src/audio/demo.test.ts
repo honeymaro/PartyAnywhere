@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { demoAudioFrame } from './demo';
+import { SPECTRUM_BINS } from './features';
 
 describe('demoAudioFrame', () => {
-  it('produces a 64-bin spectrum with byte values', () => {
+  it('produces a SPECTRUM_BINS-wide spectrum with byte values', () => {
     const f = demoAudioFrame(1.0);
-    expect(f.spectrum.length).toBe(64);
+    expect(f.spectrum.length).toBe(SPECTRUM_BINS);
     for (const v of f.spectrum) expect(v).toBeGreaterThanOrEqual(0);
     for (const v of f.spectrum) expect(v).toBeLessThanOrEqual(255);
   });

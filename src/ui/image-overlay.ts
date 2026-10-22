@@ -88,10 +88,11 @@ export class ImageOverlay {
     this.time += dt;
     const k = 1 - Math.exp(-(dt || 0) / 0.15);
     this.sBass += (audio.bass - this.sBass) * k;
-    // Snappy "kick" driver: jump to whichever of the beat onset or the bass is louder,
+    // Snappy "kick" driver: jump to whichever of the beat onset or the (squared) bass is louder,
     // then decay fast so each hit reads as a distinct punch (쿵짝) rather than a steady swell.
+    // Squaring keeps the bass bed between kicks from holding the image permanently enlarged.
     const decayK = Math.exp(-(dt || 0) / 0.06); // ~40ms half-life
-    const kick = Math.max(audio.beat, audio.bass);
+    const kick = Math.max(audio.beat, audio.bass * audio.bass);
     this.beatPop = Math.max(this.beatPop * decayK, kick);
 
     if (this.active.length === 0) {

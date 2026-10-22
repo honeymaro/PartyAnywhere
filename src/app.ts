@@ -8,6 +8,7 @@ import type { ColorSourceId } from './color/color-service';
 import { ManualColorSource, ImageColorSource, ScreenColorSource } from './color/sources';
 import { registerAll } from './visualizers/index';
 import { RotationController } from './rotation-controller';
+import { ResolutionGovernor } from './gl/resolution-governor';
 import { loadSettings, saveSettings } from './settings-store';
 import type { Settings } from './settings-store';
 import type { AudioFrame, Palette } from './core/types';
@@ -39,6 +40,11 @@ export class App {
   private imageSource = new ImageColorSource();
   private screenSource: ScreenColorSource | null = null;
   private rotation = new RotationController();
+  // Dynamic resolution: the canvas is CSS-stretched to the window, its drawing buffer is scaled
+  // so heavy shaders stay smooth on 4K screens / integrated GPUs.
+  private governor = new ResolutionGovernor();
+  private nativeWidth = 1;
+  private nativeHeight = 1;
   private selected = new Set<string>();
   private started = false;
   private starting = false;
@@ -193,6 +199,8 @@ export class App {
 
   /** Activate a visualizer; if it fails to init (e.g. bad shader), drop it from the pool. */
   private activateById(id: string): void {
+    this.governor.begin(id);
+    this.applyRenderScale();
     const ok = this.host.activate(this.registry.create(id));
     if (!ok) {
       this.selected.delete(id);
@@ -333,7 +341,8 @@ export class App {
       this.lastTime = now;
 
       this.rotation.update(dt);
-      const audio = this.analyser ? this.analyser.frame() : SILENT_FRAME;
+      if (this.governor.update(dt)) this.applyRenderScale();
+      const audio = this.analyser ? this.analyser.frame(dt) : SILENT_FRAME;
       this.screenSource?.sample(now);
       const palette = this.colorService.update(dt);
       this.host.render({
@@ -351,9 +360,16 @@ export class App {
 
   private handleResize(): void {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    this.host.resize(
-      Math.floor(window.innerWidth * dpr),
-      Math.floor(window.innerHeight * dpr),
-    );
+    this.nativeWidth = Math.max(1, Math.floor(window.innerWidth * dpr));
+    this.nativeHeight = Math.max(1, Math.floor(window.innerHeight * dpr));
+    this.governor.setNativeSize(this.nativeWidth, this.nativeHeight);
+    this.applyRenderScale();
+  }
+
+  private applyRenderScale(): void {
+    const s = this.governor.value;
+    const w = Math.max(1, Math.round(this.nativeWidth * s));
+    const h = Math.max(1, Math.round(this.nativeHeight * s));
+    if (w !== this.canvas.width || h !== this.canvas.height) this.host.resize(w, h);
   }
 }
