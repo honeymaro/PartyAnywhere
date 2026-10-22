@@ -59,6 +59,7 @@ import { createWormholeLensing } from './wormhole-lensing';
 import { createFractalPyramid } from './fractal-pyramid';
 import { createStarNest } from './star-nest';
 import { createPointillistSwirl } from './pointillist-swirl';
+import { createVolcanoEruption } from './volcano-eruption';
 
 export interface VisualizerEntry {
   info: VisualizerInfo;
@@ -126,6 +127,7 @@ export const VISUALIZERS: VisualizerEntry[] = [
   { info: { id: 'fractal-pyramid', name: 'Fractal Pyramid' }, factory: createFractalPyramid },
   { info: { id: 'star-nest', name: 'Star Nest' }, factory: createStarNest },
   { info: { id: 'pointillist-swirl', name: 'Pointillist Swirl' }, factory: createPointillistSwirl },
+  { info: { id: 'volcano-eruption', name: 'Volcanic Eruption' }, factory: createVolcanoEruption },
 ];
 
 export function registerAll(registry: VisualizerRegistry): void {
