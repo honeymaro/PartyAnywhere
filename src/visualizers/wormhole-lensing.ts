@@ -75,19 +75,21 @@ void main() {
   float angAccum = 0.0;
   float captured = 0.0; // how strongly this ray fell into the throat
 
-  for (int i = 0; i < 26; i++) {
-    float rr = dot(p, p) + EPS;          // squared radius (+eps guard)
+  float rr = dot(p, p) + EPS;            // squared radius (+eps guard), carried across steps
+  // 18 steps of 1.44x the old length (was 26): same total path and bend, ~30% cheaper
+  const float K = 26.0 / 18.0;
+  for (int i = 0; i < 18; i++) {
     float pull = strength / rr;          // inverse-square-ish pull
     // rotate the marching direction by the accumulated bend
-    float bend = pull * 0.5;
+    float bend = pull * 0.5 * K;
     angAccum += bend;
     dir = rot(bend) * dir;
     // step inward-biased: advance along dir but also drift toward center
-    p += dir * 0.06 - normalize(p + vec2(EPS)) * pull * 0.04;
+    p += (dir * 0.06 - p * inversesqrt(rr) * pull * 0.04) * K;
+    rr = dot(p, p) + EPS;
     // photons that swing too tight get captured by the photon sphere
-    float r = length(p);
-    captured += exp(-r * r * 40.0) * 0.04;
-    if (r > 2.2) break; // escaped to background
+    captured += exp(-rr * 40.0) * 0.04 * K;
+    if (rr > 4.84) break; // escaped to background (r > 2.2)
   }
   captured = clamp(captured, 0.0, 1.0);
 
@@ -108,16 +110,17 @@ void main() {
 
   // --- Einstein / photon ring ---
   float r = r0len;
-  float ringBase = 0.34 - 0.04 * uBass;          // ring radius, pulses inward on bass
+  float ringBase = 0.34 - 0.018 * uBass;         // ring radius, small inward pulse on bass
   float w = 0.022 + 0.01 * beat;                 // ring width, flares on beat
   // chromatic aberration: per-channel ring radius split by treble.
   float split = 0.008 + 0.01 * uTreble;
   float rR = exp(-pow((r - (ringBase + split)) / w, 2.0));
   float rG = exp(-pow((r - ringBase) / w, 2.0));
   float rB = exp(-pow((r - (ringBase - split)) / w, 2.0));
-  vec3 ring = vec3(rR, rG, rB);
-  float ringGain = 1.2 + 0.8 * uBass + 1.0 * beat; // ring still pulses on the beat (rhythm)
-  col += ring * mix(uAccent, vec3(1.0), 0.3) * ringGain;
+  // split samples tinted with the palette (raw R/G/B channels ignored the palette)
+  vec3 ring = rR * uAccent + rG * mix(uAccent, vec3(1.0), 0.45) + rB * uPrimary;
+  float ringGain = 0.75 + 0.4 * uBass + 0.9 * beat; // ring still pulses on the beat (rhythm)
+  col += ring * ringGain;
 
   // Secondary thin outer halo ring (Einstein ring echo) — kept faint to avoid clutter.
   float halo = exp(-pow((r - (ringBase + 0.12)) / (w * 2.2), 2.0));
@@ -139,7 +142,8 @@ void main() {
   // Gentle vignette so the hole reads against the frame.
   col *= 1.0 - 0.25 * smoothstep(0.7, 1.3, length(uv));
 
-  fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+  col = 1.0 - exp(-col * 1.4);
+  fragColor = vec4(col, 1.0);
 }
 `;
 

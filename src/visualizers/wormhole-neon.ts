@@ -17,10 +17,12 @@ uniform vec3 uPrimary;
 uniform vec3 uAccent;
 
 // cheap value-noise + 4-octave fbm (int loop only)
+// (fract(p * 0.1031) style: depth grows with the accumulated travel, and a hash that first
+// multiplies by ~456 loses its fractional bits within the first hour, flattening the walls)
 float hash(vec2 p) {
-  p = fract(p * vec2(123.34, 456.21));
-  p += dot(p, p + 45.32);
-  return fract(p.x * p.y);
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
 }
 float vnoise(vec2 p) {
   vec2 i = floor(p);
@@ -96,13 +98,15 @@ void main() {
   float mixT = 0.5 + 0.5 * sin(baseDepth * 0.6 + a);
   vec3 wallCol = mix(uPrimary, uAccent, mixT);
 
-  // additive neon glow, tinted per-channel from the CA samples
+  // additive neon glow. The split samples are tinted with the palette (primary on one
+  // side, accent on the other) instead of raw R/G/B channels, which painted pure red and
+  // green fringes whatever the palette was.
   vec3 col = vec3(0.0);
-  col += wallCol * vec3(wr, wg, wb) * 1.6;
+  col += wallCol * wg * 1.0 + (uPrimary * wr + uAccent * wb) * 0.55;
 
   // throat glow: bright bloom at the center, pulsed by bass + beat
   float glow = pow(smoothstep(0.65, 0.0, r), 3.0);
-  float throatPulse = 0.5 + uBass * 1.6 + uBeat * 3.0;
+  float throatPulse = 0.35 + uBass * 0.5 + uBeat * 1.2;
   vec3 throatCol = mix(uAccent, uPrimary, 0.3 + 0.5 * uBass);
   col += throatCol * glow * throatPulse;
 
@@ -113,10 +117,12 @@ void main() {
   float fog = smoothstep(0.95, 0.15, r);
   col *= mix(0.25, 1.0, fog);
 
-  // subtle exposure lift with the music so quiet passages stay visible
-  col *= 0.9 + uLevel * 0.4 + uBeat * 0.6;
+  // subtle exposure lift with the music so quiet passages stay visible; the kick flash
+  // is kept moderate and soft tone-mapped (the old hard clamp blew the center out to white)
+  col *= 0.85 + uLevel * 0.3 + uBeat * 0.4;
 
-  fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+  col = 1.0 - exp(-col * 1.3);
+  fragColor = vec4(col, 1.0);
 }
 `;
 

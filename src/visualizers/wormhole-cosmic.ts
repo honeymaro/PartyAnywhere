@@ -90,7 +90,7 @@ void main() {
   vec3 neb = mix(uPrimary, uAccent, density);
   // fade nebula in toward the rim, out at the throat
   float wallFade = smoothstep(0.04, 0.55, r);
-  vec3 col = neb * density * wallFade * (0.55 + uBass * 0.7);
+  vec3 col = neb * density * wallFade * (0.7 + uBass * 0.6);
 
   // --- starfield: sparse bright stars streaming toward the throat ---
   // Angle mapped to an integer number of cells (NA) and wrapped, so the seam at
@@ -111,8 +111,10 @@ void main() {
 
   // --- bright throat + soft bloom at center, pulsed by bass + beat ---
   float throat = pow(smoothstep(0.7, 0.0, r), 2.5);
-  float pulse = 0.5 + uBass * 0.9 + beat * 2.0;
-  vec3 throatCol = mix(uAccent, vec3(1.0), 0.4);
+  // kept moderate: with the new dynamic bass/beat the old gains blew the throat into a
+  // large flat white disc on every kick
+  float pulse = 0.3 + uBass * 0.45 + beat * 1.3;
+  vec3 throatCol = mix(uAccent, vec3(1.0), 0.25);
   col += throatCol * throat * pulse;
   // soft outer bloom around the throat
   col += uPrimary * smoothstep(0.55, 0.0, r) * 0.18 * pulse;
@@ -128,7 +130,8 @@ void main() {
   // distance fog toward far tunnel
   col = mix(col, uPrimary * 0.04, smoothstep(0.0, 1.2, r) * 0.4);
 
-  fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+  col = 1.0 - exp(-col * 1.3);
+  fragColor = vec4(col, 1.0);
 }
 `;
 

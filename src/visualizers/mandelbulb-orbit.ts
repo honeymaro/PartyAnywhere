@@ -1,129 +1,156 @@
 import type { Visualizer, VisualizerContext } from '../gl/visualizer';
 import type { RenderFrame } from '../core/types';
 
+// Power-8-ish Mandelbulb seen from a slowly orbiting camera. The fractal power morphs on a slow
+// time-only cycle (never with audio, so the shape does not jitter); the camera orbit angle is
+// accumulated on the CPU (audio only changes its RATE). Kicks flash the rim / crevice glow, lift
+// the halo behind the bulb and give a small (< 5 %) size pulse.
 const FRAG = `#version 300 es
 precision highp float;
 out vec4 fragColor;
 uniform vec2 uResolution;
-uniform float uTime;
+uniform vec3 uCamPos;   // orbit camera (CPU)
+uniform vec3 uCamRight;
+uniform vec3 uCamUp;
+uniform vec3 uCamFwd;
+uniform float uPower;   // fractal power, slow time-only morph
+uniform float uPulse;   // kick size pulse (1.0 .. 1.04)
+uniform float uPixel;   // ray-cone footprint per unit distance (hit epsilon)
 uniform float uBass;
-uniform float uMid;
 uniform float uTreble;
 uniform float uBeat;
 uniform vec3 uPrimary;
 uniform vec3 uAccent;
 
-float mandelbulbDE(vec3 pos, float power) {
-  vec3 z = pos;
-  float dr = 1.0;
-  float r = 0.0;
-  float trap = 1e9;
-  for (int i = 0; i < 6; i++) {
-    r = length(z);
-    if (r > 2.0) break;
-    float theta = acos(clamp(z.z / r, -1.0, 1.0));
-    float phi = atan(z.y, z.x);
-    dr = pow(r, power - 1.0) * power * dr + 1.0;
-    float zr = pow(r, power);
-    theta *= power;
-    phi *= power;
-    z = zr * vec3(sin(theta)*cos(phi), sin(theta)*sin(phi), cos(theta)) + pos;
-    trap = min(trap, min(abs(z.x), min(abs(z.y), abs(z.z))));
+const float FOCAL = 1.6;
+const float BOUND = 1.2;
+
+// Trigonometric Mandelbulb DE (4 iterations, bailout 256 for a smooth field).
+// tr.x = final |z|^2 (cheap occlusion term), tr.yzw = orbit traps used for soft coloring.
+float mapBulb(vec3 p, out vec4 tr) {
+  vec3 w = p;
+  float m = dot(w, w);
+  vec4 trap = vec4(abs(w), m);
+  float dz = 1.0;
+  for (int i = 0; i < 4; i++) {
+    float r = sqrt(m);
+    float rp = pow(r, uPower - 1.0);
+    dz = uPower * rp * dz + 1.0;
+    float b = uPower * acos(clamp(w.y / r, -1.0, 1.0));
+    float a = uPower * atan(w.x, w.z);
+    float sb = sin(b);
+    w = p + rp * r * vec3(sb * sin(a), cos(b), sb * cos(a));
+    trap = min(trap, vec4(abs(w), m));
+    m = dot(w, w);
+    if (m > 256.0) break;
   }
-  return 0.5 * log(max(r, 1e-9)) * r / dr;
+  tr = vec4(m, trap.yzw);
+  return 0.25 * log(m) * sqrt(m) / dz;
 }
 
-vec3 calcNormal(vec3 p, float power) {
-  float h = 0.002;
-  vec2 k = vec2(1.0, -1.0);
+float map(vec3 p, out vec4 tr) {
+  return mapBulb(p / uPulse, tr) * uPulse;
+}
+
+vec3 calcNormal(vec3 p, float h) {
+  const vec2 k = vec2(1.0, -1.0);
+  vec4 tr;
   return normalize(
-    k.xyy * mandelbulbDE(p + k.xyy*h, power) +
-    k.yyx * mandelbulbDE(p + k.yyx*h, power) +
-    k.yxy * mandelbulbDE(p + k.yxy*h, power) +
-    k.xxx * mandelbulbDE(p + k.xxx*h, power)
-  );
-}
-
-vec3 cosPalette(float t, vec3 a, vec3 b) {
-  return a + b * cos(6.28318 * (t + vec3(0.0, 0.33, 0.67)));
+    k.xyy * map(p + k.xyy * h, tr) +
+    k.yyx * map(p + k.yyx * h, tr) +
+    k.yxy * map(p + k.yxy * h, tr) +
+    k.xxx * map(p + k.xxx * h, tr));
 }
 
 void main() {
   vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution) / min(uResolution.x, uResolution.y);
+  vec3 ro = uCamPos;
+  vec3 rd = normalize(uv.x * uCamRight + uv.y * uCamUp + FOCAL * uCamFwd);
 
-  float power = 8.0 + sin(uTime * 0.2) * 2.0 + uMid * 3.0 + uBeat * 2.0;
+  // palette in linear light
+  vec3 P = uPrimary * uPrimary;
+  vec3 A = uAccent * uAccent;
 
-  float orbitR = 2.8 + uBass * 1.2;
-  float angle = uTime * 0.3;
-  vec3 camPos = vec3(orbitR * cos(angle), orbitR * 0.35 * sin(uTime * 0.17), orbitR * sin(angle));
-  vec3 target = vec3(0.0);
-  vec3 ww = normalize(target - camPos);
-  vec3 uu = normalize(cross(ww, vec3(0.0, 1.0, 0.0)));
-  vec3 vv = cross(uu, ww);
-  vec3 rd = normalize(uv.x * uu + uv.y * vv + 1.6 * ww);
+  // backdrop: deep palette-tinted gradient plus a halo around the bulb (closest approach of the ray)
+  float b = dot(ro, rd);
+  float c = dot(ro, ro);
+  float h2 = c - b * b;
+  float closest = sqrt(max(h2, 0.0));
+  vec3 col = mix(vec3(0.004, 0.004, 0.010), P * 0.035, 0.5 + 0.5 * uv.y);
+  float halo = exp(-max(closest - 0.75, 0.0) * 3.2);
+  col += mix(P, A, 0.55) * halo * (0.05 + 0.12 * uBass + 0.7 * uBeat);
 
-  float t = 0.0;
-  float trap = 1e9;
-  int steps = 0;
-  for (int i = 0; i < 48; i++) {
-    vec3 p = camPos + t * rd;
-    vec3 z = p;
-    float dr2 = 1.0;
-    float r2 = 0.0;
-    float localTrap = 1e9;
-    for (int j = 0; j < 6; j++) {
-      r2 = length(z);
-      if (r2 > 2.0) break;
-      float theta2 = acos(clamp(z.z / r2, -1.0, 1.0));
-      float phi2 = atan(z.y, z.x);
-      dr2 = pow(r2, power - 1.0) * power * dr2 + 1.0;
-      float zr2 = pow(r2, power);
-      theta2 *= power;
-      phi2 *= power;
-      z = zr2 * vec3(sin(theta2)*cos(phi2), sin(theta2)*sin(phi2), cos(theta2)) + p;
-      localTrap = min(localTrap, min(abs(z.x), min(abs(z.y), abs(z.z))));
+  float rb = BOUND * uPulse;
+  float disc = b * b - (c - rb * rb);
+  if (disc > 0.0) {
+    float sq = sqrt(disc);
+    float t = max(-b - sq, 0.0);
+    float tFar = -b + sq;
+    vec4 tr = vec4(0.0);
+    bool hit = false;
+    // slightly over-relaxed steps (the bulb DE underestimates) and a hit epsilon that widens
+    // with the step count, so silhouette rays stop early instead of crawling along the surface
+    float eps = uPixel;
+    for (int i = 0; i < 56; i++) {
+      float d = map(ro + rd * t, tr);
+      if (d < eps * t) { hit = true; break; }
+      t += d * 1.2;
+      eps *= 1.04;
+      if (t > tFar) break;
     }
-    float d = 0.5 * log(max(r2, 1e-9)) * r2 / dr2;
-    if (d < 0.001) { trap = localTrap; steps = i; break; }
-    t += d;
-    if (t > 8.0) break;
+
+    if (hit) {
+      vec3 pos = ro + rd * t;
+      vec3 n = calcNormal(pos, uPixel * t * 0.5);
+
+      // soft orbit-trap coloring from the palette (low frequency, no speckle)
+      float occ = clamp(0.06 * log(tr.x) + 0.05, 0.0, 1.0);
+      vec3 alb = P * 0.04;
+      alb = mix(alb, P * 0.24, clamp(tr.y, 0.0, 1.0));
+      alb = mix(alb, mix(P, A, 0.35) * 0.2, clamp(tr.z * tr.z, 0.0, 1.0));
+      alb = mix(alb, mix(A, P, 0.25) * 0.32, clamp(pow(tr.w, 6.0), 0.0, 1.0));
+
+      vec3 L = normalize(uCamRight * 0.8 + uCamUp * 0.6 - uCamFwd * 0.1);
+      float dif = clamp(dot(n, L), 0.0, 1.0);
+      float sky = clamp(0.5 + 0.5 * dot(n, uCamUp), 0.0, 1.0);
+      float bac = clamp(dot(n, -L), 0.0, 1.0);
+      float fre = pow(clamp(1.0 + dot(rd, n), 0.0, 1.0), 3.0);
+      float spe = pow(clamp(dot(n, normalize(L - rd)), 0.0, 1.0), 28.0) * dif;
+
+      vec3 lin = vec3(0.0);
+      lin += 5.0 * dif * vec3(1.0, 0.95, 0.88) * (0.3 + 0.7 * occ);
+      lin += 1.2 * sky * mix(P, vec3(1.0), 0.3) * occ;
+      lin += 0.6 * bac * A * occ;
+      col = alb * lin;
+      col += spe * (0.35 + 0.9 * uTreble) * occ;
+
+      // rim and crevice glow: the visible kick response
+      col += A * fre * occ * (0.2 + 0.35 * uBass + 2.2 * uBeat);
+      col += mix(P, A, 0.3) * (1.0 - occ) * (1.0 - occ) * (0.03 + 0.3 * uBass + 1.6 * uBeat);
+    }
   }
 
-  vec3 col = vec3(0.02, 0.02, 0.04);
-
-  if (t < 8.0) {
-    vec3 p = camPos + t * rd;
-    vec3 n = calcNormal(p, power);
-    float ao = 1.0 - float(steps) / 48.0;
-
-    float trapT = clamp(trap * 2.5, 0.0, 1.0);
-    vec3 iridescent = cosPalette(trapT + uTime * 0.05, uPrimary * 0.5, uAccent * 0.5);
-
-    float fresnel = pow(1.0 - clamp(dot(-rd, n), 0.0, 1.0), 3.0);
-    vec3 rimCol = mix(uAccent, vec3(1.0), 0.5) * fresnel * 1.5;
-
-    float diff = clamp(dot(n, normalize(vec3(1.0, 1.5, 0.8))), 0.0, 1.0);
-    float spec = pow(clamp(dot(reflect(rd, n), normalize(vec3(1.0, 1.5, 0.8))), 0.0, 1.0), 32.0);
-
-    float trebleGlint = uTreble * spec * 2.0;
-
-    col = iridescent * (0.3 + 0.7 * diff) * ao;
-    col += rimCol * ao;
-    col += vec3(trebleGlint);
-    col = mix(col, col * 1.4, uBeat * 0.4);
-  }
-
+  // gentle tone map and gamma
+  col = col / (1.0 + col * 0.6);
+  col = pow(col, vec3(0.4545));
   fragColor = vec4(col, 1.0);
 }
 `;
 
-const NAMES = ['uResolution', 'uTime', 'uBass', 'uMid', 'uTreble', 'uBeat', 'uPrimary', 'uAccent'] as const;
+const NAMES = [
+  'uResolution', 'uCamPos', 'uCamRight', 'uCamUp', 'uCamFwd', 'uPower', 'uPulse', 'uPixel',
+  'uBass', 'uTreble', 'uBeat', 'uPrimary', 'uAccent',
+] as const;
+
+const FOCAL = 1.6;
+const CAM_DIST = 4.2;
 
 export function createMandelbulbOrbit(): Visualizer {
   let gl: WebGL2RenderingContext;
   let ctx: VisualizerContext;
   let program: WebGLProgram;
   const u: Record<string, WebGLUniformLocation | null> = {};
+  let orbit = 0.6; // camera orbit angle (rate rides level + beat; only ever increases)
 
   return {
     id: 'mandelbulb-orbit',
@@ -138,12 +165,36 @@ export function createMandelbulbOrbit(): Visualizer {
     render(frame: RenderFrame) {
       gl.useProgram(program);
       ctx.quad.bind(program);
+      const a = frame.audio;
+      orbit += (0.08 + a.level * 0.08 + a.beat * 0.3) * frame.dt;
+
+      // orbit camera (elevation drifts on a slow time-only cycle)
+      const elev = 0.25 + 0.3 * Math.sin(frame.time * 0.09);
+      const ce = Math.cos(elev);
+      const px = CAM_DIST * ce * Math.cos(orbit);
+      const py = CAM_DIST * Math.sin(elev);
+      const pz = CAM_DIST * ce * Math.sin(orbit);
+      const fx = -px / CAM_DIST, fy = -py / CAM_DIST, fz = -pz / CAM_DIST;
+      // right = normalize(cross(fwd, worldUp)), up = cross(right, fwd)
+      let rx = -fz, rz = fx;
+      const rl = Math.hypot(rx, rz) || 1;
+      rx /= rl; rz /= rl;
+      const ux = -rz * fy, uy = rz * fx - rx * fz, uz = rx * fy;
+
+      const power = 8.0 + 1.2 * Math.sin(frame.time * 0.045);
+      const pulse = 1.0 + 0.04 * a.beat;
+
       gl.uniform2f(u.uResolution, frame.resolution[0], frame.resolution[1]);
-      gl.uniform1f(u.uTime, frame.time);
-      gl.uniform1f(u.uBass, frame.audio.bass);
-      gl.uniform1f(u.uMid, frame.audio.mid);
-      gl.uniform1f(u.uTreble, frame.audio.treble);
-      gl.uniform1f(u.uBeat, frame.audio.beat);
+      gl.uniform3f(u.uCamPos, px, py, pz);
+      gl.uniform3f(u.uCamRight, rx, 0, rz);
+      gl.uniform3f(u.uCamUp, ux, uy, uz);
+      gl.uniform3f(u.uCamFwd, fx, fy, fz);
+      gl.uniform1f(u.uPower, power);
+      gl.uniform1f(u.uPulse, pulse);
+      gl.uniform1f(u.uPixel, 2.0 / (Math.min(frame.resolution[0], frame.resolution[1]) * FOCAL));
+      gl.uniform1f(u.uBass, a.bass);
+      gl.uniform1f(u.uTreble, a.treble);
+      gl.uniform1f(u.uBeat, a.beat);
       gl.uniform3f(u.uPrimary, frame.palette.primary[0], frame.palette.primary[1], frame.palette.primary[2]);
       gl.uniform3f(u.uAccent, frame.palette.accent[0], frame.palette.accent[1], frame.palette.accent[2]);
       gl.drawArrays(gl.TRIANGLES, 0, 3);

@@ -6,6 +6,9 @@ import type { RenderFrame } from '../core/types';
 // flight. Reworked for GLSL ES 3.00, colored from the live palette, and driven by
 // CPU-accumulated phase uniforms (uTravel/uSpin) so the music modulates the fly/rotate
 // RATE one-directionally (no piston/wobble); bass + beat lift the glow brightness.
+// Cost: the volume is cut from 16 to 10 layers. Layer r is weighted by DISTFADING^r
+// (0.73^10 = 0.04), so the dropped far layers carried only ~4 % of the light; the
+// remaining ones are lifted by that amount to keep the exposure.
 const FRAG = `#version 300 es
 precision highp float;
 out vec4 fragColor;
@@ -17,7 +20,7 @@ uniform float uBeat;
 uniform vec3 uPrimary;
 uniform vec3 uAccent;
 
-const int VOLSTEPS = 16;
+const int VOLSTEPS = 10; // was 16; the far layers were faded to ~nothing
 const int ITERATIONS = 13;
 const float FORMUPARAM = 0.53;
 const float STEPSIZE = 0.1;
@@ -68,8 +71,9 @@ void main(){
   }
   v = mix(vec3(length(v)), v, SATURATION); // saturation control
 
-  vec3 col = v * 0.012;
-  col *= 0.9 + uBass * 0.5 + uBeat * 0.8; // brightness lift on bass/beat (no motion)
+  vec3 col = v * 0.0125;
+  // brightness lift on bass/beat (no motion): bed ~1.0 in a drop, ~2.1x on a kick
+  col *= 0.85 + uBass * 0.4 + uBeat * 0.9;
 
   fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }

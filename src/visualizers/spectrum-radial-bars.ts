@@ -1,84 +1,96 @@
 import type { Visualizer, VisualizerContext } from '../gl/visualizer';
-import type { RenderFrame } from '../core/types';
+import type { AudioFrame, RenderFrame } from '../core/types';
 
+// 64 discrete rounded bars radiating from a glowing inner ring. The spectrum is mirrored
+// left/right around the vertical axis (bass at the bottom, treble at the top), so the
+// wrap is seamless. The inner ring swells and brightens with the bass, every onset
+// launches a ring outward from it, and the whole crown turns slowly (accumulated uRot).
 const FRAG = `#version 300 es
 precision highp float;
 out vec4 fragColor;
 uniform vec2 uResolution;
-uniform float uTime;
+uniform float uRot;     // accumulated rotation (audio modulates the rate)
 uniform float uBass;
 uniform float uTreble;
 uniform float uBeat;
+uniform vec4 uKickAge;  // seconds since the last 4 onsets (newest first)
+uniform vec4 uKickAmp;  // their strengths 0..1
 uniform vec3 uPrimary;
 uniform vec3 uAccent;
 uniform sampler2D uSpectrum;
 
 const float TWO_PI = 6.28318530718;
-const float INNER = 0.2;
+const float NB = 64.0;
+const float GAP = 0.016;   // space between the inner ring and the bar bases
+const float MAX_L = 0.25;  // longest bar
 
 void main() {
   vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution) / min(uResolution.x, uResolution.y);
-
+  float aa = 1.5 / min(uResolution.x, uResolution.y);
   float r = length(uv);
-  float a = atan(uv.y, uv.x);
+  // angle measured from the bottom, so the mirror axis is vertical
+  float a = atan(uv.x, -uv.y) - uRot;
 
-  // Normalised angle [0,1] — only used for the seamless bar-height wobble term below
-  // (its *8 integer multiple keeps it continuous across the wrap).
-  float normA = fract(a / TWO_PI + 0.5);
+  float R0 = 0.16 * (1.0 + uBass * 0.06); // inner ring radius: small bass swell
 
-  // Spectrum lookup: rotate the angle, then mirror it into [0,1] via a triangle wave so
-  // the bars join seamlessly across the 0/360 wrap. A plain fract() mapping jumps from
-  // ~1 to 0 at the -x axis (last bin vs first bin), which shows as a hard seam.
-  float ra = a + uTime * 0.04 * TWO_PI;
-  float mirrorA = abs(mod(ra + 3.14159265, TWO_PI) - 3.14159265) / 3.14159265;
-  float specVal = texture(uSpectrum, vec2(mirrorA, 0.5)).r;
+  // nearest bar (bars are centered on integer k)
+  float fa = a / TWO_PI * NB;
+  float k = floor(fa + 0.5);
+  float da = (fa - k) * TWO_PI / NB;
+  // mirrored spectrum position: k and -k share a band, 0 = bass, 32 = treble
+  float km = mod(k + NB * 0.5, NB) - NB * 0.5;
+  float sx = abs(km) / (NB * 0.5);
+  float s = texture(uSpectrum, vec2(0.01 + sx * 0.9, 0.5)).r;
+  float len = 0.02 + s * MAX_L;
 
-  // Bar height: spectrum drives it, bass expands the ring
-  float barH = specVal * 0.6 + 0.005 * sin(uTime * 3.0 + normA * TWO_PI * 8.0);
-  float outerEdge = INNER + barH + uBass * 0.1;
+  // bar-local frame: lx across the bar, ly along the radius
+  float lx = r * sin(da);
+  float ly = r * cos(da);
+  float hw = 0.0055;
+  float y0 = R0 + GAP + hw;
+  float y1 = R0 + GAP + max(len - hw, hw);
+  float d = length(vec2(lx, ly - clamp(ly, y0, y1))) - hw;
 
-  // Radial bar mask: between inner radius and outer edge
-  float inBar = step(INNER, r) * step(r, outerEdge);
+  float fill = smoothstep(aa, -aa, d);
+  float t = clamp((ly - R0 - GAP) / MAX_L, 0.0, 1.0);
+  vec3 barCol = mix(uPrimary, uAccent, smoothstep(0.0, 0.8, t));
+  barCol *= 0.75 + 0.35 * (1.0 - abs(lx) / hw);
+  float tip = smoothstep(hw * 4.0, 0.0, abs(ly - y1));
+  barCol += mix(uAccent, vec3(1.0), 0.5) * tip * (0.2 + uTreble * 0.2 + uBeat * 0.5);
+  barCol *= 0.8 + uBeat * 0.4;
 
-  // Mirror: also draw opposite side (full circle already covers, but add
-  // a subtle second ring at a slightly different radius for depth)
-  float mirrorR = INNER * 0.55;
-  float mirrorH = barH * 0.45;
-  float inMirror = step(mirrorR, r) * step(r, mirrorR + mirrorH);
+  vec3 col = vec3(0.012, 0.012, 0.025);
+  // faint halo behind the crown
+  col += mix(uPrimary, uAccent, 0.5) * exp(-abs(r - R0 - 0.1) * 9.0) * (0.04 + uBass * 0.06);
+  col = mix(col, barCol, fill);
+  col += mix(uPrimary, uAccent, t) * exp(-max(d, 0.0) * 55.0) * (1.0 - fill) * (0.14 + uBeat * 0.2);
 
-  // Color gradient from uPrimary at base to uAccent at tip
-  float tBar = (outerEdge > INNER) ? clamp((r - INNER) / max(barH, 0.001), 0.0, 1.0) : 0.0;
-  vec3 barColor = mix(uPrimary, uAccent, tBar);
+  // inner ring: thickness and brightness ride the bass
+  float ringW = 0.003 + uBass * 0.004;
+  float ring = smoothstep(ringW + aa, ringW - aa, abs(r - R0));
+  vec3 ringCol = mix(uPrimary, vec3(1.0), 0.3 + uBeat * 0.4);
+  col += ringCol * ring * (0.5 + uBass * 0.5);
+  col += uPrimary * exp(-abs(r - R0) * 45.0) * (0.12 + uBass * 0.35 + uBeat * 0.3);
 
-  // Bright tip glow where r is near the outer edge
-  float tipGlow = smoothstep(outerEdge - 0.04, outerEdge, r) * inBar;
-  barColor += uTreble * tipGlow * uAccent * 1.5;
+  // core: dark center with a soft bass glow
+  float inside = smoothstep(R0, R0 - 0.02, r);
+  col += mix(uAccent, uPrimary, 0.5) * inside * exp(-r * r * 60.0) * (0.15 + uBass * 0.5);
 
-  // Beat flash: bright concentric ring at the outer rim
-  float beatRing = smoothstep(0.02, 0.0, abs(r - outerEdge - 0.01)) * uBeat;
-  barColor += beatRing * mix(uPrimary, uAccent, 0.7) * 2.0;
+  // onset rings launched outward from the inner ring
+  for (int i = 0; i < 4; i++) {
+    float age = uKickAge[i];
+    float rr = R0 + age * 0.75;
+    float w = 0.004 + age * 0.02;
+    float x = (r - rr) / w;
+    col += mix(uAccent, vec3(1.0), 0.35) * exp(-x * x) * uKickAmp[i] * exp(-age * 3.0) * 0.9;
+  }
 
-  // Bloom falloff around each bar (soft glow halo)
-  float distToOuter = abs(r - outerEdge);
-  float bloom = exp(-distToOuter * 18.0) * inBar * 0.35;
-  barColor += bloom * uAccent;
-
-  // Mirror ring contribution
-  vec3 mirrorColor = mix(uPrimary * 0.6, uAccent * 0.6, tBar);
-
-  // Idle pulse so there is always motion
-  float idlePulse = 0.04 * sin(uTime * 1.8) * smoothstep(INNER + 0.01, INNER, r);
-
-  vec3 col = barColor * inBar
-           + mirrorColor * inMirror * (1.0 - inBar)
-           + idlePulse * uPrimary;
-
-  fragColor = vec4(col, 1.0);
+  fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
 `;
 
 const NAMES = [
-  'uResolution', 'uTime', 'uBass', 'uTreble', 'uBeat',
+  'uResolution', 'uRot', 'uBass', 'uTreble', 'uBeat', 'uKickAge', 'uKickAmp',
   'uPrimary', 'uAccent', 'uSpectrum',
 ] as const;
 
@@ -87,6 +99,28 @@ export function createSpectrumRadialBars(): Visualizer {
   let ctx: VisualizerContext;
   let program: WebGLProgram;
   const u: Record<string, WebGLUniformLocation | null> = {};
+  let rot = 0; // crown rotation (audio sets the rate; only ever increases)
+  // Onset events detected on the CPU (rising edge), newest first.
+  const kickAge = new Float32Array(4).fill(99);
+  const kickAmp = new Float32Array(4);
+  let prevBeat = 0;
+  let prevBass = 0;
+
+  function trackKicks(a: AudioFrame, dt: number): void {
+    for (let i = 0; i < 4; i++) kickAge[i] += dt;
+    const onset = (a.beat - prevBeat > 0.25 && a.beat > 0.6) || (a.bass - prevBass > 0.18 && a.bass > 0.7);
+    const amp = Math.min(1, 0.3 + 0.7 * a.bass);
+    if (onset && kickAge[0] > 0.1) {
+      kickAge.copyWithin(1, 0);
+      kickAmp.copyWithin(1, 0);
+      kickAge[0] = 0;
+      kickAmp[0] = amp;
+    } else if (onset) {
+      kickAmp[0] = Math.max(kickAmp[0], amp); // bass landed a frame after the onset
+    }
+    prevBeat = a.beat;
+    prevBass = a.bass;
+  }
 
   return {
     id: 'spectrum-radial-bars',
@@ -104,11 +138,16 @@ export function createSpectrumRadialBars(): Visualizer {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, ctx.spectrumTex);
       gl.uniform1i(u.uSpectrum, 0);
+      const a = frame.audio;
+      trackKicks(a, frame.dt);
+      rot += (0.03 + a.level * 0.05 + a.beat * 0.18) * frame.dt;
       gl.uniform2f(u.uResolution, frame.resolution[0], frame.resolution[1]);
-      gl.uniform1f(u.uTime, frame.time);
-      gl.uniform1f(u.uBass, frame.audio.bass);
-      gl.uniform1f(u.uTreble, frame.audio.treble);
-      gl.uniform1f(u.uBeat, frame.audio.beat);
+      gl.uniform1f(u.uRot, rot);
+      gl.uniform1f(u.uBass, a.bass);
+      gl.uniform1f(u.uTreble, a.treble);
+      gl.uniform1f(u.uBeat, a.beat);
+      gl.uniform4fv(u.uKickAge, kickAge);
+      gl.uniform4fv(u.uKickAmp, kickAmp);
       gl.uniform3f(u.uPrimary, frame.palette.primary[0], frame.palette.primary[1], frame.palette.primary[2]);
       gl.uniform3f(u.uAccent, frame.palette.accent[0], frame.palette.accent[1], frame.palette.accent[2]);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
